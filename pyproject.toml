@@ -1,0 +1,51 @@
+[project]
+name = "llm-foundations-notes"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "khacvu0505", email = "khacvu0505@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+llm-foundations-notes = "llm_foundations_notes:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+    "ruff>=0.16.7",
+]
+
+# ---------------------------------------------------------------------------
+# ruff — lint + format gộp một (ESLint + Prettier của Python)
+#   uv run ruff check .    -> lint
+#   uv run ruff format .   -> format
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100          # độ dài dòng tối đa, áp cho cả lint lẫn format
+target-version = "py312"   # cho ruff biết syntax 3.12 để gợi ý đúng
+
+[tool.ruff.lint]
+# Chọn bộ rule được bật (mặc định ruff chỉ bật E + F):
+#   E  = pycodestyle  — style cơ bản (thụt lề, khoảng trắng...)
+#   F  = pyflakes     — lỗi logic: import không dùng, biến chưa định nghĩa
+#   I  = isort        — sắp xếp import đúng thứ tự
+#   B  = bugbear      — bug pattern kinh điển, gồm mutable default args (B006)
+#   UP = pyupgrade    — ép syntax hiện đại: list[str] thay vì List[str]
+select = ["E", "F", "I", "B", "UP"]
+
+# ---------------------------------------------------------------------------
+# pyright — type checker (tsc --noEmit của Python)
+#   uv run pyright
+# ---------------------------------------------------------------------------
+[tool.pyright]
+venvPath = "."                 # tìm virtualenv ở thư mục gốc project
+venv = ".venv"                 # tên folder venv do uv tạo (node_modules của Python)
+typeCheckingMode = "standard"  # mức vừa; quen rồi có thể nâng lên "strict"
