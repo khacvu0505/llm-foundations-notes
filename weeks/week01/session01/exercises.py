@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 # Buổi 1 — Port TS sang Python
 #
 # Luật chơi: tự viết code Python dưới mỗi đề bài, KHÔNG search lời giải trước khi thử.
@@ -46,6 +48,12 @@ def even_squares(nums: list[int]) -> list[int]:
 #   - Gợi ý: tương đương ??= là dict.setdefault() (hoặc collections.defaultdict)
 
 # TODO: viết code ở đây
+def group_by[T](items: list[T], key_fn: Callable[[T], str]) -> dict[str, list[T]]:
+    result: dict[str, list[T]] = {}
+    for item in items:
+        key = key_fn(item)
+        result.setdefault(key, []).append(item)
+    return result 
 
 
 # ============================================================================
@@ -120,3 +128,4 @@ def even_squares(nums: list[int]) -> list[int]:
 
 if __name__ == "__main__":
     print(even_squares([1, 2, 3, 4, 5]))
+    print(group_by([1, 2, 3, 4, 5], lambda x: str(x % 2 == 0 )))
