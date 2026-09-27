@@ -1,8 +1,8 @@
 import asyncio
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal, TypedDict
-import time
 
 # Buổi 1 — Port TS sang Python
 #
@@ -109,9 +109,7 @@ class User:
 
 
 def parse_user(raw: RawUser) -> User:
-    return User(
-        name=raw.get("name", ""), age=raw.get("age", 0), role=raw.get("role", "member")
-    )
+    return User(name=raw.get("name", ""), age=raw.get("age", 0), role=raw.get("role", "member"))
 
 
 # ============================================================================
