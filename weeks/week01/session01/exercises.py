@@ -1,4 +1,8 @@
+import asyncio
 from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Literal, TypedDict
+import time
 
 # Buổi 1 — Port TS sang Python
 #
@@ -23,11 +27,11 @@ from collections.abc import Callable
 #   - Tên hàm: even_squares, có type hints đầy đủ (list[int] -> list[int])
 #   - Body đúng 1 dòng comprehension, không dùng map()/filter() của Python
 
+
 # TODO: viết code ở đây
 # Cách 1: Hàm thông thường
 def even_squares(nums: list[int]) -> list[int]:
-    return [value ** 2 for value in nums if value % 2 == 0]
-
+    return [value**2 for value in nums if value % 2 == 0]
 
 
 # ============================================================================
@@ -47,13 +51,14 @@ def even_squares(nums: list[int]) -> list[int]:
 #   - Type cho keyFn: Callable[[T], str] (import từ collections.abc)
 #   - Gợi ý: tương đương ??= là dict.setdefault() (hoặc collections.defaultdict)
 
+
 # TODO: viết code ở đây
 def group_by[T](items: list[T], key_fn: Callable[[T], str]) -> dict[str, list[T]]:
     result: dict[str, list[T]] = {}
     for item in items:
         key = key_fn(item)
         result.setdefault(key, []).append(item)
-    return result 
+    return result
 
 
 # ============================================================================
@@ -76,13 +81,37 @@ def group_by[T](items: list[T], key_fn: Callable[[T], str]) -> dict[str, list[T]
 #   function parseUser(raw: RawUser): User { ... }
 #
 # Yêu cầu:
-#   - Khai báo type alias: Role = Literal["admin", "member"]
+#   - Khai báo type alias: Role = Literal["admin", "member"from typing_extensions import Literal]
 #   - RawUser: class kế thừa TypedDict với total=False (nghĩa là mọi key optional)
 #   - User: @dataclass với 4 field đúng type (isAdult -> is_adult theo naming Python)
 #   - parse_user(raw) -> User: đọc field có thể thiếu bằng raw.get(key, default),
 #     tính is_adult từ age
 
 # TODO: viết code ở đây
+Role = Literal["admin", "member"]
+
+
+class RawUser(TypedDict, total=False):  # total=False nghĩa là mọi key optional
+    name: str
+    age: int
+    role: Role
+
+
+@dataclass
+class User:
+    name: str = ""
+    age: int = 0
+    role: Role = "member"
+
+    @property
+    def is_adult(self) -> bool:
+        return self.age >= 18
+
+
+def parse_user(raw: RawUser) -> User:
+    return User(
+        name=raw.get("name", ""), age=raw.get("age", 0), role=raw.get("role", "member")
+    )
 
 
 # ============================================================================
@@ -103,7 +132,15 @@ def group_by[T](items: list[T], key_fn: Callable[[T], str]) -> dict[str, list[T]
 #   - Lưu ý khi viết test: hàm test thường không async được, gọi bằng
 #     asyncio.run(fetch_all([...]))
 
+
 # TODO: viết code ở đây
+async def fake_fetch(item_id: str) -> str:
+    await asyncio.sleep(0.05)
+    return f"data:{item_id}"
+
+
+async def fetch_all(ids: list[str]) -> list[str]:
+    return await asyncio.gather(*[fake_fetch(item_id) for item_id in ids])
 
 
 # ============================================================================
@@ -121,11 +158,21 @@ def group_by[T](items: list[T], key_fn: Callable[[T], str]) -> dict[str, list[T]
 #   - Implement __exit__: tính self.elapsed
 #   - Đây chính là pattern with open(...), with httpx.Client() dùng suốt các buổi sau
 
-# TODO: viết code ở đây
 
+# TODO: viết code ở đây`
+class Timer:
+    def __enter__(self):
 
+        self.start_time = time.perf_counter()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.elapsed = time.perf_counter() - self.start_time
 
 
 if __name__ == "__main__":
     print(even_squares([1, 2, 3, 4, 5]))
-    print(group_by([1, 2, 3, 4, 5], lambda x: str(x % 2 == 0 )))
+    print(group_by([1, 2, 3, 4, 5], lambda x: str(x % 2 == 0)))
+    print(parse_user({"name": "Quyen", "age": 1, "role": "member"}))
+    print(parse_user({"name": "Vu", "age": 2, "role": "admin"}))
+    print(asyncio.run(fetch_all(["a", "b", "c", "d", "e"])))
