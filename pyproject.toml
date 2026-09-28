@@ -7,7 +7,11 @@ authors = [
     { name = "khacvu0505", email = "khacvu0505@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "openai>=3.19.2",
+    "python-dotenv>=1.2.3",
+    "tiktoken>=0.14.0",
+]
 
 [project.scripts]
 llm-foundations-notes = "llm_foundations_notes:main"
