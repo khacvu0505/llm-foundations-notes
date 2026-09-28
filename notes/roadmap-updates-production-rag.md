@@ -46,25 +46,27 @@ Không thêm gì vào 2 bài Rebuild test (giữ nguyên để đo năng lực n
 
 ## 3. Checklist áp dụng lên Notion
 
-- [ ] Phase 02 — Buổi 3
-- [ ] Phase 02 — Buổi 6
-- [ ] Phase 02 — Buổi 8
-- [ ] Phase 02 — Buổi 9
-- [ ] Phase 02 — Buổi 13–15
-- [ ] Phase 02 — Exit criteria
-- [ ] Phase 03 — Buổi 4 + Buổi 6
-- [ ] Phase 03 — Exit criteria
-- [ ] Phase 04 — Buổi 3
-- [ ] Phase 04 — Buổi 9
-- [ ] Phase 04 — Buổi 11
-- [ ] Phase 04 — Buổi 12
-- [ ] Phase 04 — Buổi 14
-- [ ] Phase 04 — Buổi 15
-- [ ] Phase 04 — Buổi 17
-- [ ] Phase 04 — Buổi 19–20
-- [ ] Bộ 20 câu — B.5, D.3
-- [ ] Bộ 20 câu — E.1
-- [ ] Trang chính — Sau lộ trình
+> Đã áp dụng ngày 28/09/2026.
+
+- [x] Phase 02 — Buổi 3
+- [x] Phase 02 — Buổi 6
+- [x] Phase 02 — Buổi 8
+- [x] Phase 02 — Buổi 9
+- [x] Phase 02 — Buổi 13–15
+- [x] Phase 02 — Exit criteria
+- [x] Phase 03 — Buổi 4 + Buổi 6
+- [x] Phase 03 — Exit criteria
+- [x] Phase 04 — Buổi 3
+- [x] Phase 04 — Buổi 9
+- [x] Phase 04 — Buổi 11
+- [x] Phase 04 — Buổi 12
+- [x] Phase 04 — Buổi 14
+- [x] Phase 04 — Buổi 15
+- [x] Phase 04 — Buổi 17
+- [x] Phase 04 — Buổi 19–20
+- [x] Bộ 20 câu — B.5, D.3
+- [x] Bộ 20 câu — E.1
+- [x] Trang chính — Sau lộ trình
 
 ## 4. Nội dung chi tiết để dán
 
