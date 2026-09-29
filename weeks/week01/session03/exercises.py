@@ -1,3 +1,4 @@
+import tiktoken
 from dotenv import load_dotenv
 from openai import Omit, OpenAI, omit
 from openai.types.responses import Response, ResponseInputParam
@@ -190,7 +191,13 @@ def run_bai3() -> None:
 #     dùng tokenizer khác nên số token sẽ không giống.
 #   - Ghi vào notes.md: vì sao tiếng Việt tốn token hơn?
 
+
 # TODO: viết code ở đây
+def count_token(text: str, encoding_name: str = "o200k_base") -> int:
+
+    encoding = tiktoken.get_encoding(encoding_name)
+    tokens = encoding.encode(text)
+    return len(tokens)
 
 
 # ============================================================================
@@ -209,12 +216,24 @@ def run_bai3() -> None:
 #     1 tháng tốn bao nhiêu?
 #   - Ghi vào notes.md: input hay output đắt hơn? Prompt tiếng Việt ảnh hưởng gì?
 
+
 # TODO: viết code ở đây
+# Giá gpt-4o-mini, USD / 1M token, tra ngày 29/09/2026 tại developers.openai.com/api/docs/pricing
+PRICE_IN_PER_MTOK = 0.15
+PRICE_OUT_PER_MTOK = 0.60
+
+
+def cost_usd(
+    input_tokens: int, output_tokens: int, price_in_per_mtok: float, price_out_per_mtok: float
+) -> float:
+    return (input_tokens / 1_000_000) * price_in_per_mtok + (
+        output_tokens / 1_000_000
+    ) * price_out_per_mtok
 
 
 if __name__ == "__main__":
     # test bài 1
-    # print(chat_openai("You are a helpful assistant.", "What is python?"))
+    print(chat_openai("You are a helpful assistant.", "What is python?"))
 
     # test bài 2
     # print(chat_history("You're helpful asistant", [{"role": "user", "content": "What is my name"}]))
@@ -231,3 +250,37 @@ if __name__ == "__main__":
 
     # test bài 3
     # run_bai3()
+
+    # test bài 4
+    # pairs = [
+    #     ("Xin chào, hôm nay trời đẹp quá.", "Hello, the weather is so nice today."),
+    #     (
+    #         "Tôi muốn đặt một bàn cho bốn người vào tối thứ Bảy.",
+    #         "I would like to book a table for four people on Saturday evening.",
+    #     ),
+    #     (
+    #         "Mô hình ngôn ngữ lớn dự đoán token tiếp theo dựa trên ngữ cảnh.",
+    #         "Large language models predict the next token based on context.",
+    #     ),
+    # ]
+    # for vi, en in pairs:
+    #     print(f"VI {count_token(vi)} token | {vi}")
+    #     print(f"EN {count_token(en)} token | {en}\n")
+
+    # co_dau = "Tôi muốn đặt một bàn cho bốn người vào tối thứ Bảy."
+    # khong_dau = "Toi muon dat mot ban cho bon nguoi vao toi thu Bay."
+    # print(f"Có dấu:    {count_token(co_dau)} token")
+    # print(f"Không dấu: {count_token(khong_dau)} token")
+
+    # test bài 5
+    # response = ask(PROMPT_BAI3)
+    # usage = response.usage
+    # if usage is not None:
+    #     print(usage)
+    #     cost = cost_usd(
+    #         usage.input_tokens, usage.output_tokens, PRICE_IN_PER_MTOK, PRICE_OUT_PER_MTOK
+    #     )
+    #     print(f"Input: {usage.input_tokens} token | Output: {usage.output_tokens} token")
+    #     print(f"Cost 1 request: ${cost:.6f}")
+    #     monthly = cost * 1000 * 20 * 30
+    #     print(f"Ước tính 1000 user × 20 tin/ngày × 30 ngày: ${monthly:.2f}/tháng")

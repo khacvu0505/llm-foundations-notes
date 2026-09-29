@@ -340,6 +340,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "openai" },
+    { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "tiktoken" },
 ]
@@ -354,6 +355,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "openai", specifier = ">=3.19.2" },
+    { name = "pydantic", specifier = ">=2.13.5" },
     { name = "python-dotenv", specifier = ">=1.2.3" },
     { name = "tiktoken", specifier = ">=0.14.0" },
 ]
