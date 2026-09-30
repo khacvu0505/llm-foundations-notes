@@ -1,0 +1,132 @@
+# Buổi 5 — Structured Output với Pydantic
+#
+# Luật chơi: tự viết code dưới mỗi đề bài, tra docs chính thức khi cần
+# (Pydantic v2 docs, OpenAI "Structured Outputs" guide).
+# Import cần gì tự thêm ở đầu file.
+#
+# Chuẩn bị: xem mục "Setup" trong notes.md cùng thư mục (khai báo pydantic trong pyproject).
+#
+# Chạy:     uv run python weeks/week01/session05/exercises.py
+# Vệ sinh:  uv run ruff format . && uv run ruff check . --fix && uv run pyright
+#
+# Bài 1–2 chạy offline, không tốn tiền. Bài 3–5 gọi API: dùng gpt-4o-mini, prompt ngắn.
+# Quan sát ghi vào notes.md cùng thư mục.
+#
+# Bảng map Zod → Pydantic (để tham khảo, tự kiểm chứng khi làm):
+#   z.object({...})            → class X(BaseModel): ...
+#   z.string() / z.number()    → str / int, float
+#   .optional() / .nullable()  → X | None = None  /  X | None
+#   z.enum(["a", "b"])         → Literal["a", "b"]
+#   .min(0).max(150)           → Field(ge=0, le=150)
+#   .describe("...")           → Field(description="...")
+#   .refine(...)               → @field_validator
+#   schema.parse(data)         → X.model_validate(data)        (lỗi: ValidationError)
+#   schema.safeParse(data)     → try/except ValidationError
+#   JSON.parse + parse         → X.model_validate_json(text)
+#   z.infer<typeof schema>     → không cần: class chính là type
+
+
+# ============================================================================
+# Bài 1 — Pydantic cơ bản (offline)
+# ============================================================================
+#
+# Yêu cầu:
+#   - class Contact(BaseModel): name (str), phone (str | None), email (str | None),
+#     age (int, 0–150 bằng Field).
+#   - Thử model_validate với 5 dict: hợp lệ, thiếu name, age = -5, age = "25", age = "hai lăm".
+#     Bắt ValidationError, in e.errors() để xem Pydantic báo lỗi ở field nào, vì sao.
+#   - Để ý trường hợp age = "25": Pydantic ép thành số 25, còn Zod z.number() sẽ báo lỗi.
+#     Thử thêm model_config = ConfigDict(strict=True) xem khác gì. Ghi vào notes.md.
+#   - Thử model_dump(), model_dump_json(), model_validate_json('{"name": ...}').
+#   - In Contact.model_json_schema(): đây là thứ sẽ được gửi sang OpenAI ở Bài 3.
+
+# TODO: viết code ở đây
+
+
+# ============================================================================
+# Bài 2 — Schema cho bài toán thật: đơn hàng (offline)
+# ============================================================================
+#
+# Tình huống: shop nhận tin nhắn đặt hàng lộn xộn qua chat, cần tách thành dữ liệu có cấu trúc.
+#
+# Yêu cầu:
+#   - class OrderItem(BaseModel): product (str), quantity (int, >= 1),
+#     size (Literal S/M/L/XL | None)
+#   - class Order(BaseModel): customer_name (str | None), phone (str | None),
+#     address (str | None), items (list[OrderItem]), note (str | None)
+#   - Thêm Field(description=...) tiếng Việt cho từng field. Description được gửi kèm
+#     schema, nên nó cũng là một phần của prompt.
+#   - @field_validator cho phone: số VN 10 chữ số, bắt đầu bằng 0. Cho phép người dùng gõ
+#     có dấu cách/chấm ("0901 234 567", "0901.234.567"): làm sạch rồi mới kiểm.
+#   - Tự test bằng 3–4 dict viết tay, gồm 1 dict sai phone.
+
+# TODO: viết code ở đây
+
+
+# ============================================================================
+# Bài 3 — Ép LLM trả đúng schema (native structured output)
+# ============================================================================
+#
+# Yêu cầu:
+#   - def extract_order(text: str) -> Order | None
+#     Dùng client.responses.parse(model=..., instructions=..., input=text, text_format=Order).
+#     Kết quả đã được parse sẵn ở response.output_parsed (có thể là None, nhớ kiểm).
+#   - Thử với 1 tin nhắn, ví dụ:
+#       "Chị ơi e lấy 2 áo thun size M với 1 quần jean L nha, giao về 12 Nguyễn Huệ Q1,
+#        sđt 0901 234 567, tên Lan"
+#   - In model_dump_json(indent=2) để xem kết quả.
+#   - Điểm cần biết (đã kiểm với SDK): ở chế độ strict, MỌI field đều bị đánh dấu bắt buộc.
+#     Field được phép trống phải khai báo X | None, model sẽ trả null. Field có default
+#     vẫn bắt buộc, model sẽ luôn điền giá trị.
+#   - Thử 1 tin nhắn KHÔNG phải đơn hàng ("hôm nay shop mở cửa mấy giờ?"). Model trả gì?
+#
+# (Tùy chọn) Cách cũ hơn: tool-based extraction, khai báo Order làm 1 tool rồi đọc
+# arguments. Đọc qua để biết, Buổi 7 (function calling) sẽ làm kỹ.
+
+# TODO: viết code ở đây
+
+
+# ============================================================================
+# Bài 4 — Xử lý fail: retry kèm thông báo lỗi, rồi fallback
+# ============================================================================
+#
+# Tình huống: schema JSON không diễn tả được hết luật của bạn (ví dụ validator phone ở Bài 2).
+# LLM trả đúng JSON nhưng vẫn có thể fail validator.
+#
+# Yêu cầu:
+#   - def extract_with_retry(text: str, max_retries: int = 2) -> Order | None
+#   - Gọi LLM, rồi validate kết quả bằng Order (có validator).
+#     Mẹo: với responses.parse, validator chạy ngay lúc parse; lỗi validate sẽ ném ra
+#     pydantic.ValidationError. Tự kiểm chứng điều này khi làm.
+#   - Nếu fail: gửi lại cho model cả câu trả lời trước lẫn thông báo lỗi
+#     ("Kết quả trước bị lỗi: <lỗi>. Hãy sửa lại."), tức là dùng lịch sử hội thoại như Buổi 3 bài 2.
+#   - Hết số lần retry vẫn fail → fallback: return None, hoặc trả Order với phone = None
+#     và ghi chú lỗi. Tự chọn và ghi lý do vào notes.md.
+#   - In ra mỗi lần thử: lần thứ mấy, pass hay fail, lỗi gì.
+#   - Test bằng tin nhắn có số điện thoại sai, ví dụ "sđt 090123" (thiếu số).
+
+# TODO: viết code ở đây
+
+
+# ============================================================================
+# Bài 5 — Test: 10 tin nhắn lộn xộn, đo tỉ lệ pass validation
+# ============================================================================
+#
+# Yêu cầu:
+#   - Viết list 10 tin nhắn đặt hàng. 3 tin mẫu bên dưới, tự viết thêm 7 tin, cố tình đa dạng:
+#     teencode/viết tắt, thiếu thông tin, nhiều sản phẩm, số điện thoại sai, không phải đơn hàng,
+#     lẫn tiếng Anh, sửa ý giữa chừng ("à thôi lấy size L").
+#   - Chạy extract_with_retry cho cả 10 tin. Có thể chạy song song bằng AsyncOpenAI + gather
+#     như Buổi 4 (tùy chọn).
+#   - Đo và in: số tin pass ngay lần đầu, số tin pass sau retry, số tin fallback,
+#     tổng token và tổng cost (dùng công thức Buổi 3).
+#   - Đọc lại từng kết quả: pass validation chưa chắc là ĐÚNG
+#     (ví dụ đúng format nhưng sai số lượng).
+#     Tự đánh dấu đúng/sai bằng mắt, ghi tỉ lệ "pass" và tỉ lệ "đúng thật" vào notes.md.
+#
+# Tin mẫu:
+#   "cho mình 3 cái áo polo size L, gửi về 45 Lê Lợi Đà Nẵng. Tùng 0935.111.222"
+#   "shop ơi còn váy hoa ko ạ, lấy 1 cái nha, e ở Cần Thơ"
+#   "2 ao thun M + 1 ao khoac XL, sdt 0912 345 678, giao gio hanh chinh"
+
+# TODO: viết code ở đây

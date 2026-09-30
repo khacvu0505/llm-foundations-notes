@@ -43,21 +43,50 @@ Temperature tác động lên bước nào trong quá trình sinh token (nối v
 
 ## Bài 4 — Token tiếng Việt vs tiếng Anh
 
+> Kết quả chạy ngày 29/09/2026, bảng mã `o200k_base` (bảng mã của `gpt-4o-mini`).
+
 | Câu | Token (Việt) | Token (Anh) | Tỉ lệ |
 |---|---|---|---|
-| | | | |
-| | | | |
-| | | | |
+| Xin chào, hôm nay trời đẹp quá. | 10 | 9 | 1.11 |
+| Tôi muốn đặt một bàn cho bốn người vào tối thứ Bảy. | 16 | 14 | 1.14 |
+| Mô hình ngôn ngữ lớn dự đoán token tiếp theo dựa trên ngữ cảnh. | 21 | 11 | 1.91 |
 
 Không dấu thì sao:
 
+- Câu đặt bàn: có dấu 16 token, không dấu cũng 16 token. Bỏ dấu KHÔNG tiết kiệm token.
+- Decode từng token:
+  - Có dấu: `T` `ôi` ` muốn` ` đặt` ` một` ` bàn` ` cho` ` b` `ốn` ` người` ` vào` ` tối` ` thứ` ` B` `ảy` `.`
+  - Không dấu: `To` `i` ` mu` `on` ` dat` ` mot` ` ban` ` cho` ` bon` ` ngu` `oi` ` vao` ` toi` ` thu` ` Bay` `.`
+- Từ phổ biến có dấu ("muốn", "người", "thứ") là 1 token nguyên. Không dấu thì "muon", "nguoi" bị cắt đôi,
+  còn "bon", "Bay" trùng từ tiếng Anh nên 1 token. Hai bên bù trừ nhau.
+- Bỏ dấu còn làm model khó hiểu hơn: "ban" có thể là bàn / bạn / bán.
+
 Vì sao tiếng Việt tốn token hơn:
 
--
+- Bảng mã (tokenizer) học chủ yếu từ văn bản tiếng Anh, nên từ tiếng Anh thường là 1 token nguyên.
+- Từ tiếng Việt ít gặp bị cắt thành nhiều mảnh; chữ có dấu ở vị trí lạ bị tách riêng ("B" + "ảy").
+- Câu giao tiếp chỉ tốn hơn ~10% với `o200k_base`. Câu thuật ngữ tốn gần gấp đôi (1.91).
+- tiktoken đếm tên quán "Cà Phê Đà Lạt Mộng Mơ" là 12 token, `usage` của API báo 13 → API thêm token đặc biệt.
+  tiktoken dùng để ước tính, tính tiền thì lấy từ `usage`.
 
 ## Bài 5 — Cost
 
-- Model và giá (ngày tra):
-- Cost 1 request:
-- Ước tính 1000 user × 20 tin/ngày × 30 ngày:
-- Input hay output đắt hơn:
+> Kết quả chạy ngày 29/09/2026.
+
+- Model và giá (ngày tra): `gpt-4o-mini`, tra 29/09/2026 tại developers.openai.com/api/docs/pricing.
+  Input $0.15, input đã cache $0.075, output $0.60 — tính theo 1 triệu token.
+- Cost 1 request: prompt đặt tên quán cà phê → 30 token input, 6 token output → $0.000008
+  (input $0.0000045 + output $0.0000036).
+- Ước tính 1000 user × 20 tin/ngày × 30 ngày: $4.86/tháng.
+- Input hay output đắt hơn: output đắt gấp 4 lần input (với `gpt-4o-mini`).
+
+Quan sát thêm:
+
+- Prompt ~17 token theo tiktoken nhưng `usage` báo 30 token input: API thêm token định dạng (role, ranh giới message).
+- $4.86 là mức thấp nhất vì prompt quá ngắn. App thật: input mỗi request = system prompt + lịch sử hội thoại
+  gửi lại (Bài 2) + context RAG + câu hỏi. Ví dụ ~4.000 input + 300 output → ~$0.00078/request → ~$468/tháng
+  cho cùng 1000 user × 20 tin/ngày. Gấp ~100 lần, toàn bộ do token input.
+- Yếu tố làm đổi chi phí: agent gọi nhiều request cho 1 tin nhắn; token suy luận tính giá output; chọn model khác;
+  cache input giảm một nửa giá phần lặp lại; sliding window cắt lịch sử (Buổi 6).
+- Ước tính đáng tin: log token của nhiều request thật rồi lấy trung bình (Langfuse, Phase 04 Buổi 10).
+- Prompt tiếng Việt ảnh hưởng: câu thuật ngữ có thể tốn gần gấp đôi token so với tiếng Anh (Bài 4) → input đắt hơn.
