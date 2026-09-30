@@ -1,8 +1,9 @@
 import asyncio
 import time
+from dataclasses import dataclass
 
 from dotenv import load_dotenv
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, OpenAI
 
 load_dotenv()  # load .env, có OPENAI_API_KEY
 
@@ -113,6 +114,24 @@ async def main():
 #   - Gợi ý: in thử event.type của mọi event 1 lần để xem stream có những loại nào.
 
 # TODO: viết code ở đây
+client2 = OpenAI()
+
+
+def stream_chat(prompt: str) -> None:
+    ttft: float | None = None  # chưa nhận mảnh nào
+    start = time.perf_counter()
+    stream = client2.responses.create(model="gpt-6-luna", input=prompt, stream=True)
+    for event in stream:
+        if event.type == "response.output_text.delta":
+            if ttft is None:  # chỉ mảnh đầu tiên mới gán
+                ttft = time.perf_counter() - start
+            print(event.delta, end="", flush=True)
+        elif event.type == "response.completed":
+            total = time.perf_counter() - start
+            print()  # xuống dòng sau đoạn text
+            print(f"TTFT: {ttft:.2f} seconds")
+            print(f"Total time: {total:.2f} seconds")
+            print(f"Usage: {event.response.usage}")
 
 
 # ============================================================================
@@ -125,7 +144,17 @@ async def main():
 #   - Vừa in từng mảnh, vừa gom lại thành chuỗi đầy đủ rồi return.
 #   - Bên TS: giống for await (const chunk of stream). Đây là nền cho Buổi 9 (SSE về Next.js).
 
+
 # TODO: viết code ở đây
+async def astream_chat(prompt: str) -> str:
+    stream = await client.responses.create(model="gpt-6-luna", input=prompt, stream=True)
+    text = ""
+    async for event in stream:
+        if event.type == "response.output_text.delta":
+            text += event.delta
+            print(event.delta, end="", flush=True)
+    print()  # xuống dòng sau đoạn text
+    return text
 
 
 # ============================================================================
@@ -146,6 +175,64 @@ async def main():
 
 # TODO: viết code ở đây
 
+# Giá USD / 1M token (input, output), tra ngày 2026-09-30
+# Nguồn: developers.openai.com/api/docs/pricing
+PRICES: dict[str, tuple[float, float]] = {
+    "gpt-4.1-nano": (0.10, 0.40),
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-6-luna": (0.10, 0.50),
+}
+
+
+@dataclass
+class Measurement:
+    model: str
+    latency: float
+    input_tokens: int
+    output_tokens: int
+    cost: float
+    text: str
+
+
+def cost_usd(
+    input_tokens: int, output_tokens: int, price_in_per_mtok: float, price_out_per_mtok: float
+) -> float:
+    return (input_tokens / 1_000_000) * price_in_per_mtok + (
+        output_tokens / 1_000_000
+    ) * price_out_per_mtok
+
+
+async def measure(model: str, prompt: str) -> Measurement:
+    start = time.perf_counter()
+    response = await client.responses.create(model=model, input=prompt)
+    latency = time.perf_counter() - start
+
+    usage = response.usage
+    input_tokens = usage.input_tokens if usage else 0
+    output_tokens = usage.output_tokens if usage else 0
+    price_in, price_out = PRICES[model]
+    cost = cost_usd(input_tokens, output_tokens, price_in, price_out)
+
+    return Measurement(model, latency, input_tokens, output_tokens, cost, response.output_text)
+
+
+async def compare_models(prompt: str) -> None:
+    start = time.perf_counter()
+    results = await asyncio.gather(*[measure(model, prompt) for model in PRICES])
+    total = time.perf_counter() - start
+
+    print(f"{'model':<15} | {'latency':>8} | {'input':>6} | {'output':>6} | {'cost':>10}")
+    print("-" * 57)
+    for r in results:
+        print(
+            f"{r.model:<15} | {r.latency:>7.2f}s | {r.input_tokens:>6} | "
+            f"{r.output_tokens:>6} | ${r.cost:>9.6f}"
+        )
+    print(f"\nTổng thời gian (gather): {total:.2f}s")
+
+    for r in results:
+        print(f"\n--- {r.model} ---\n{r.text}")
+
 
 if __name__ == "__main__":
     # test bài 1
@@ -154,4 +241,14 @@ if __name__ == "__main__":
     # print("Response:", response_text)
 
     # test bài 2
-    asyncio.run(main())
+    # asyncio.run(main())
+
+    # test bài 3
+    # stream_chat("Giới thiệu Đà Lạt trong 5 câu")
+
+    # test bài 4
+    # full_text = asyncio.run(astream_chat("Giới thiệu Đà Lạt trong 5 câu"))
+    # print(f"Returned: {len(full_text)} ký tự")
+
+    # test bài 5
+    asyncio.run(compare_models("Giới thiệu Đà Lạt trong 5 câu"))
