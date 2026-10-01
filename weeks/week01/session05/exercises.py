@@ -1,3 +1,7 @@
+import json
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
 # Buổi 5 — Structured Output với Pydantic
 #
 # Luật chơi: tự viết code dưới mỗi đề bài, tra docs chính thức khi cần
@@ -40,7 +44,74 @@
 #   - Thử model_dump(), model_dump_json(), model_validate_json('{"name": ...}').
 #   - In Contact.model_json_schema(): đây là thứ sẽ được gửi sang OpenAI ở Bài 3.
 
+
 # TODO: viết code ở đây
+class Contact(BaseModel):
+    name: str
+    phone: str | None = None
+    email: str | None = None
+    age: int = Field(ge=0, le=150)
+
+
+class StrictContact(Contact):
+    model_config = ConfigDict(strict=True)
+
+
+def bai1_validate() -> None:
+    cases = [
+        {"name": "Nguyen Van A", "age": 25},
+        {"age": 16},
+        {"name": "Nguyen Van C", "age": -5},
+        {"name": "Nguyen Van D", "age": "25"},
+        {"name": "Nguyen Van E", "age": "hai lam"},
+    ]
+
+    for model in (Contact, StrictContact):
+        print(f"\n=== {model.__name__} ===")
+        for data in cases:
+            try:
+                print(model.model_validate(data))
+
+            except ValidationError as e:
+                print()
+                print(e.errors())
+
+
+def bai1_serialize() -> None:
+
+    # Phần A: object Pydantic (đầu vào) -> dict / JSON string (đầu ra)
+    print("=== dump ===")
+    contact = Contact.model_validate({"name": "Nguyen Van A", "age": 25})
+
+    dumped = contact.model_dump()
+    print(type(dumped), dumped)
+
+    dumped_json = contact.model_dump_json()
+    print(type(dumped_json), dumped_json)
+    print(contact.model_dump_json(indent=2))
+
+    # Phần B: JSON string (đầu vào) -> object Pydantic (đầu ra), parse + validate cùng lúc
+    texts = [
+        '{"name": "Nguyen Van A", "age": 25}',
+        '{"name": "Nguyen Van D", "age": "25"}',
+        '{"name": "Nguyen Van F", "age": 25,}',  # JSON hỏng: thừa dấu phẩy cuối
+    ]
+
+    for model in (Contact, StrictContact):
+        print(f"\n=== {model.__name__}.model_validate_json ===")
+        for text in texts:
+            try:
+                print(model.model_validate_json(text))
+
+            except ValidationError as e:
+                print()
+                print(e.errors())
+
+
+def bai1_schema() -> None:
+    for model in (Contact, StrictContact):
+        print(f"\n=== {model.__name__} JSON schema ===")
+        print(json.dumps(model.model_json_schema(), indent=2))
 
 
 # ============================================================================
@@ -130,3 +201,9 @@
 #   "2 ao thun M + 1 ao khoac XL, sdt 0912 345 678, giao gio hanh chinh"
 
 # TODO: viết code ở đây
+
+
+if __name__ == "__main__":
+    # bai1_validate()
+    # bai1_serialize()
+    bai1_schema()
