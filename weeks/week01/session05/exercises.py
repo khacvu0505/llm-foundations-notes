@@ -1,4 +1,5 @@
 import json
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -131,7 +132,22 @@ def bai1_schema() -> None:
 #     có dấu cách/chấm ("0901 234 567", "0901.234.567"): làm sạch rồi mới kiểm.
 #   - Tự test bằng 3–4 dict viết tay, gồm 1 dict sai phone.
 
+
 # TODO: viết code ở đây
+class OrderItem(BaseModel):
+    product: str = Field(description="Tên sản phẩm")
+    quantity: int = Field(ge=1, description="Số lượng")
+    size: Literal["S", "M", "L", "XL"] | None = Field(description="Kích cỡ", default=None)
+
+
+class Order(BaseModel):
+    customer_name: str | None = Field(description="Tên khách hàng", default=None)
+    phone: str | None = Field(
+        description="Số điện thoại", pattern=r"^(?:\+84|84|0)(3|5|7|8|9)\d{8}$", default=None
+    )
+    address: str | None = Field(description="Địa chỉ", default=None)
+    items: list[OrderItem]
+    note: str | None = Field(description="Ghi chú", default=None)
 
 
 # ============================================================================
