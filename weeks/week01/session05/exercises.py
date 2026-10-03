@@ -1,7 +1,8 @@
 import json
+import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 # Buổi 5 — Structured Output với Pydantic
 #
@@ -142,12 +143,72 @@ class OrderItem(BaseModel):
 
 class Order(BaseModel):
     customer_name: str | None = Field(description="Tên khách hàng", default=None)
-    phone: str | None = Field(
-        description="Số điện thoại", pattern=r"^(?:\+84|84|0)(3|5|7|8|9)\d{8}$", default=None
-    )
+    phone: str | None = Field(description="Số điện thoại", default=None)
     address: str | None = Field(description="Địa chỉ", default=None)
-    items: list[OrderItem]
+    items: list[OrderItem] = Field(description="Danh sách sản phẩm")
     note: str | None = Field(description="Ghi chú", default=None)
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        phone_clean = re.sub(r"[\s.\-]", "", value)
+        if not re.fullmatch(r"0\d{9}", phone_clean):
+            raise ValueError("Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0")
+
+        return phone_clean
+
+
+def bai2_validate() -> None:
+    cases = [
+        # 1. Valid: phone with spaces, should be cleaned to "0901234567"
+        {
+            "customer_name": "Lan",
+            "phone": "0901 234 567",
+            "address": "12 Nguyễn Huệ Q1",
+            "items": [
+                {"product": "áo thun", "quantity": 2, "size": "M"},
+                {"product": "quần jean", "quantity": 1, "size": "L"},
+            ],
+            "note": None,
+        },
+        # 2. Valid: phone with dots, item without size, has note
+        {
+            "customer_name": "Tùng",
+            "phone": "0935.111.222",
+            "address": "45 Lê Lợi Đà Nẵng",
+            "items": [{"product": "áo polo", "quantity": 3}],
+            "note": "giao giờ hành chính",
+        },
+        # 3. Valid: missing info (no name, phone, address); only items is required
+        {
+            "items": [{"product": "váy hoa", "quantity": 1}],
+        },
+        # 4. Wrong phone: only 6 digits
+        {
+            "customer_name": "Minh",
+            "phone": "090123",
+            "items": [{"product": "áo khoác", "quantity": 1, "size": "XL"}],
+        },
+        # 5. Wrong items: quantity = 0 and size not in the Literal list
+        {
+            "customer_name": "Hoa",
+            "phone": "0912345678",
+            "items": [
+                {"product": "áo thun", "quantity": 0, "size": "M"},
+                {"product": "quần short", "quantity": 1, "size": "XXL"},
+            ],
+        },
+    ]
+
+    for index, data in enumerate(cases, start=1):
+        print(f"\n--- Case {index} ---")
+        try:
+            order = Order.model_validate(data)
+            print(f"PASS: {order.customer_name}")
+        except ValidationError as e:
+            print("Invalid data:", e)
 
 
 # ============================================================================
@@ -222,4 +283,6 @@ class Order(BaseModel):
 if __name__ == "__main__":
     # bai1_validate()
     # bai1_serialize()
-    bai1_schema()
+    # bai1_schema()
+
+    bai2_validate()
