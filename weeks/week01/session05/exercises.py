@@ -1,3 +1,9 @@
+import json
+import re
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
 # Buổi 5 — Structured Output với Pydantic
 #
 # Luật chơi: tự viết code dưới mỗi đề bài, tra docs chính thức khi cần
@@ -40,7 +46,74 @@
 #   - Thử model_dump(), model_dump_json(), model_validate_json('{"name": ...}').
 #   - In Contact.model_json_schema(): đây là thứ sẽ được gửi sang OpenAI ở Bài 3.
 
+
 # TODO: viết code ở đây
+class Contact(BaseModel):
+    name: str
+    phone: str | None = None
+    email: str | None = None
+    age: int = Field(ge=0, le=150)
+
+
+class StrictContact(Contact):
+    model_config = ConfigDict(strict=True)
+
+
+def bai1_validate() -> None:
+    cases = [
+        {"name": "Nguyen Van A", "age": 25},
+        {"age": 16},
+        {"name": "Nguyen Van C", "age": -5},
+        {"name": "Nguyen Van D", "age": "25"},
+        {"name": "Nguyen Van E", "age": "hai lam"},
+    ]
+
+    for model in (Contact, StrictContact):
+        print(f"\n=== {model.__name__} ===")
+        for data in cases:
+            try:
+                print(model.model_validate(data))
+
+            except ValidationError as e:
+                print()
+                print(e.errors())
+
+
+def bai1_serialize() -> None:
+
+    # Phần A: object Pydantic (đầu vào) -> dict / JSON string (đầu ra)
+    print("=== dump ===")
+    contact = Contact.model_validate({"name": "Nguyen Van A", "age": 25})
+
+    dumped = contact.model_dump()
+    print(type(dumped), dumped)
+
+    dumped_json = contact.model_dump_json()
+    print(type(dumped_json), dumped_json)
+    print(contact.model_dump_json(indent=2))
+
+    # Phần B: JSON string (đầu vào) -> object Pydantic (đầu ra), parse + validate cùng lúc
+    texts = [
+        '{"name": "Nguyen Van A", "age": 25}',
+        '{"name": "Nguyen Van D", "age": "25"}',
+        '{"name": "Nguyen Van F", "age": 25,}',  # JSON hỏng: thừa dấu phẩy cuối
+    ]
+
+    for model in (Contact, StrictContact):
+        print(f"\n=== {model.__name__}.model_validate_json ===")
+        for text in texts:
+            try:
+                print(model.model_validate_json(text))
+
+            except ValidationError as e:
+                print()
+                print(e.errors())
+
+
+def bai1_schema() -> None:
+    for model in (Contact, StrictContact):
+        print(f"\n=== {model.__name__} JSON schema ===")
+        print(json.dumps(model.model_json_schema(), indent=2))
 
 
 # ============================================================================
@@ -60,7 +133,82 @@
 #     có dấu cách/chấm ("0901 234 567", "0901.234.567"): làm sạch rồi mới kiểm.
 #   - Tự test bằng 3–4 dict viết tay, gồm 1 dict sai phone.
 
+
 # TODO: viết code ở đây
+class OrderItem(BaseModel):
+    product: str = Field(description="Tên sản phẩm")
+    quantity: int = Field(ge=1, description="Số lượng")
+    size: Literal["S", "M", "L", "XL"] | None = Field(description="Kích cỡ", default=None)
+
+
+class Order(BaseModel):
+    customer_name: str | None = Field(description="Tên khách hàng", default=None)
+    phone: str | None = Field(description="Số điện thoại", default=None)
+    address: str | None = Field(description="Địa chỉ", default=None)
+    items: list[OrderItem] = Field(description="Danh sách sản phẩm")
+    note: str | None = Field(description="Ghi chú", default=None)
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        phone_clean = re.sub(r"[\s.\-]", "", value)
+        if not re.fullmatch(r"0\d{9}", phone_clean):
+            raise ValueError("Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0")
+
+        return phone_clean
+
+
+def bai2_validate() -> None:
+    cases = [
+        # 1. Valid: phone with spaces, should be cleaned to "0901234567"
+        {
+            "customer_name": "Lan",
+            "phone": "0901 234 567",
+            "address": "12 Nguyễn Huệ Q1",
+            "items": [
+                {"product": "áo thun", "quantity": 2, "size": "M"},
+                {"product": "quần jean", "quantity": 1, "size": "L"},
+            ],
+            "note": None,
+        },
+        # 2. Valid: phone with dots, item without size, has note
+        {
+            "customer_name": "Tùng",
+            "phone": "0935.111.222",
+            "address": "45 Lê Lợi Đà Nẵng",
+            "items": [{"product": "áo polo", "quantity": 3}],
+            "note": "giao giờ hành chính",
+        },
+        # 3. Valid: missing info (no name, phone, address); only items is required
+        {
+            "items": [{"product": "váy hoa", "quantity": 1}],
+        },
+        # 4. Wrong phone: only 6 digits
+        {
+            "customer_name": "Minh",
+            "phone": "090123",
+            "items": [{"product": "áo khoác", "quantity": 1, "size": "XL"}],
+        },
+        # 5. Wrong items: quantity = 0 and size not in the Literal list
+        {
+            "customer_name": "Hoa",
+            "phone": "0912345678",
+            "items": [
+                {"product": "áo thun", "quantity": 0, "size": "M"},
+                {"product": "quần short", "quantity": 1, "size": "XXL"},
+            ],
+        },
+    ]
+
+    for index, data in enumerate(cases, start=1):
+        print(f"\n--- Case {index} ---")
+        try:
+            order = Order.model_validate(data)
+            print(f"PASS: {order.customer_name}")
+        except ValidationError as e:
+            print("Invalid data:", e)
 
 
 # ============================================================================
@@ -130,3 +278,11 @@
 #   "2 ao thun M + 1 ao khoac XL, sdt 0912 345 678, giao gio hanh chinh"
 
 # TODO: viết code ở đây
+
+
+if __name__ == "__main__":
+    # bai1_validate()
+    # bai1_serialize()
+    # bai1_schema()
+
+    bai2_validate()
