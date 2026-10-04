@@ -2,11 +2,12 @@
 
 ## Setup (tự làm)
 
-- [ ] **Khai báo pydantic trong `pyproject.toml`.** Pydantic đã có sẵn trong môi trường vì `openai` phụ thuộc vào nó,
+- [x] **Khai báo pydantic trong `pyproject.toml`.** Pydantic đã có sẵn trong môi trường vì `openai` phụ thuộc vào nó,
       nhưng code của mình import trực tiếp thì nên khai báo trực tiếp. Dùng `uv add` như Buổi 3.
       Giống bên Node: dùng `zod` thì phải có `zod` trong `package.json`, không dựa vào việc thư viện khác kéo về.
-- [ ] **Kiểm:** mở `pyproject.toml`, thấy `pydantic` trong mục `dependencies`. Chạy `uv tree --depth 1` để thấy nó
+- [x] **Kiểm:** mở `pyproject.toml`, thấy `pydantic` trong mục `dependencies`. Chạy `uv tree --depth 1` để thấy nó
       đứng ngang hàng với `openai`.
+      → `pyproject.toml` có `pydantic>=2.13.5`; `uv tree --depth 1` ra `pydantic v2.13.5` ngang hàng `openai v3.19.2`.
 
 ## Bài 1 — Pydantic vs Zod
 
@@ -128,7 +129,28 @@ JSON string ── model_validate_json ─▶  object  ── model_dump_json �
 
 ## Bài 2 — Schema đơn hàng
 
--
+- `OrderItem`: `product`, `quantity: int = Field(ge=1)`, `size: Literal["S", "M", "L", "XL"] | None`.
+- `Order`: `customer_name`, `phone`, `address`, `note` đều `str | None`; `items: list[OrderItem]` là field bắt buộc duy nhất.
+  (Bài 4 tách thành `OrderBase` chứa field + `Order(OrderBase)` chỉ thêm validator.)
+- Mỗi field có `Field(description=...)` tiếng Việt → nằm trong JSON schema gửi LLM, nên **description cũng là prompt**.
+- `@field_validator("phone")` + `@classmethod`: `None` cho qua; làm sạch bằng `re.sub(r"[\s.\-]", "", value)` rồi kiểm
+  `re.fullmatch(r"0\d{9}", ...)`; sai thì `raise ValueError(...)`; đúng thì **trả về số đã làm sạch** → giá trị trả về của
+  validator thay giá trị field (`"0901 234 567"` → `"0901234567"`).
+
+Kết quả `bai2_validate()` (5 dict viết tay):
+
+| Case | Input | Kết quả |
+|---|---|---|
+| 1 | phone `"0901 234 567"`, 2 món có size | ✅ pass, phone thành `0901234567` |
+| 2 | phone `"0935.111.222"`, món không size, có note | ✅ pass |
+| 3 | chỉ có `items` | ✅ pass (các field khác mặc định `None`) |
+| 4 | phone `"090123"` | ❌ `value_error`, `loc=phone`: "Số điện thoại phải gồm 10 chữ số và bắt đầu bằng 0" |
+| 5 | `quantity=0` + `size="XXL"` | ❌ 2 lỗi cùng lúc: `items.0.quantity` (`greater_than_equal`), `items.1.size` (`literal_error`) |
+
+- Lỗi trong list lồng nhau có `loc` chỉ đúng vị trí: `items.0.quantity`, `items.1.size` → biết món thứ mấy sai field nào.
+- Pydantic gom **tất cả** lỗi trong 1 lần validate, không dừng ở lỗi đầu tiên → 1 `ValidationError` chứa 2 lỗi.
+- Lỗi do `raise ValueError` trong validator có `type=value_error`, msg tự thêm tiền tố "Value error, ".
+- `Field(ge=1)` và `Literal` nằm trong schema (LLM thấy); validator phone chỉ nằm trong Python (LLM không thấy) → Bài 4.
 
 ## Bài 3 — Structured output
 
