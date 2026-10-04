@@ -132,29 +132,189 @@ JSON string ── model_validate_json ─▶  object  ── model_dump_json �
 
 ## Bài 3 — Structured output
 
-Kết quả với tin nhắn mẫu:
+- `client.responses.parse(..., text_format=Order)`: truyền thẳng class, SDK tự đổi sang JSON schema strict.
+  Kết quả đã là object `Order` ở `response.output_parsed`, không cần `model_validate` lại.
+- `output_parsed` có thể là `None` → kiểm trước khi gọi `model_dump_json()`.
+
+Kết quả với tin nhắn mẫu (`gpt-4o-mini`, prompt mới):
+
+| # | Tin | Kết quả | Ghi chú |
+|---|---|---|---|
+| 1 | Lan, 2 áo thun M + 1 quần jean L, "0901 234 567" | ✅ đúng hết | `phone="0901234567"`, đã mất dấu cách |
+| 2 | "còn váy hoa ko ạ, lấy 1 cái, e ở Cần Thơ" | ✅ pass | `address="Cần Thơ"`: chỉ là tỉnh, chưa đủ để giao. Pass ≠ đúng → Bài 5 |
+| 3 | không dấu: "2 ao thun M + 1 ao khoac XL..." | ✅ pass | Model tự thêm dấu: "áo khoác", "giờ hành chính" |
+| 4 | "hôm nay shop mở cửa mấy giờ?" | toàn null, `items=[]` | Xem bên dưới |
+
+- `gpt-4o-mini` và `gpt-6-luna` cho kết quả giống nhau với các tin này.
 
 Tin nhắn không phải đơn hàng thì model trả gì:
 
--
+- **Prompt cũ** ("nếu không phải đơn hàng, trả về null") →
+  `items=[]`, các field null, nhưng `note='Không phải đơn hàng: hỏi giờ mở cửa của shop.'`
+- Vì sao: **strict mode bắt model luôn trả 1 object `Order` khớp schema**, không trả `null` cho cả object được.
+  Prompt đòi điều schema không cho → model tìm đường gần nhất: nhét lời giải thích vào `note`.
+  → **Prompt mâu thuẫn với schema thì schema thắng**, phần prompt bị "bẻ" theo cách khó đoán.
+- Hậu quả nếu lưu thẳng: đơn rỗng với ghi chú giao hàng "Không phải đơn hàng..."; muốn phát hiện phải đọc câu chữ.
+- **Prompt mới** (`EXTRACT_INSTRUCTIONS`): nói rõ không phải đơn → `items=[]`, mọi field null kể cả `note`;
+  `note` chỉ chứa yêu cầu của khách; kèm 1 ví dụ JSON. → Kết quả toàn null, `note=None`. Tin đặt hàng không bị ảnh hưởng.
+- Chọn sửa prompt (không sửa schema): nhanh, không đụng Bài 2.
+- ⚠️ Hạn chế: quy ước `items == []` = "không phải đơn" **không phân biệt được** với đơn thiếu món
+  ("gửi về 12 Nguyễn Huệ, sđt 0901..." mà quên ghi món). Hai ca cần xử lý khác nhau (hỏi lại khách vs trả lời câu hỏi).
+  Cách khác nếu cần: thêm field riêng kiểu `is_order: bool` đặt **đầu** class (model sinh JSON theo thứ tự field,
+  quyết định trước rồi mới điền). Không nên ép `items` ≥ 1 phần tử: tin không phải đơn sẽ buộc model bịa ra món.
+
+Phone `"0901234567"` do ai làm sạch, model hay validator?
+
+- **Validator.** So `response.output_text` (JSON thô) với `output_parsed`, 3 lần chạy `gpt-4o-mini`:
+  raw `"0901 234 567"` → parsed `"0901234567"`. Model giữ nguyên dấu cách như khách gõ (đúng quy tắc 3),
+  `validate_phone` làm sạch.
+- → **`@field_validator` chạy ngay bên trong `responses.parse`** (SDK gọi `model_validate_json`).
+  Phone sai (`090123`) sẽ làm `parse` ném `ValidationError` luôn, không trả object → Bài 4 phải `try/except` quanh lời gọi.
+- `output_text` = JSON thô LLM sinh ra, chưa qua Pydantic. Muốn biết model "thật sự" trả gì thì xem cái này.
 
 ## Bài 4 — Retry + fallback
 
+### Vì sao phải tách schema (`OrderBase` / `Order`)
+
+- `text_format=Order` → validator chạy **bên trong** `parse` → phone sai làm `parse` ném `ValidationError`,
+  biến `response` không bao giờ được gán → **mất câu trả lời của model**, không gửi lại được để retry.
+  Lời gọi `parse` đầu tiên nằm ngoài `try` → crash luôn.
+- Cách làm: tách 2 tầng, giống `StrictContact(Contact)` ở Bài 1:
+  - `OrderBase(BaseModel)`: 5 field, **không** validator → dùng làm `text_format`, `parse` luôn thành công.
+  - `Order(OrderBase)`: chỉ thêm `@field_validator("phone")` → tự validate bằng Python, lỗi nằm trong `try`.
+  - Field khai báo 1 lần, Bài 2–3 vẫn dùng `Order` không phải sửa.
+  - Schema 2 class giống nhau (trừ `title`) → LLM không thấy validator (đúng như ghi chú Bài 1).
+- Luồng mỗi lần thử: `parse(text_format=OrderBase)` → `draft` → `Order.model_validate(draft.model_dump())`
+  → pass thì trả về / fail thì thêm vào lịch sử rồi thử lại.
+
+### Bẫy gặp phải
+
+- `Order.model_validate(<object>)` **không chạy validator**: object đã là `Order` thì Pydantic tin là hợp lệ, trả về
+  luôn (test: `phone='090123'` lọt qua). Object `OrderBase` (class cha) thì không phải `Order` → lỗi.
+  → Phải đưa vào **dict**: `draft.model_dump()`.
+- `messages = messages.extend([...])` → `messages` thành `None`. `append` / `extend` / `sort` sửa list tại chỗ và
+  trả về `None` → chỉ gọi `messages.extend(...)`, không gán lại. pyright bắt được nhờ khai báo `messages: ResponseInputParam`.
+- Lịch sử hội thoại: `[user: tin khách]` → mỗi lần fail thêm `assistant: draft.model_dump_json()` +
+  `user: "Kết quả trước bị lỗi: ... Hãy sửa lại."`. `instructions=` thay cho message `system`.
+- (Editor) `source.fixAll.ruff` khi save xóa import không dùng (F401): cắt validator rồi save trước khi dán →
+  mất `import re` và `field_validator`. Chặn bằng `unfixable = ["F401"]` nếu muốn.
+
+### Quan sát: model "sửa" lỗi thế nào
+
+Tin test: `"2 ao thun M + 1 ao khoac XL, sdt 090123, giao gio hanh chinh"`, `max_retries=2` (tối đa 3 lần).
+
+| Lần chạy | gpt-6-luna | gpt-4o-mini |
+|---|---|---|
+| 1 | FAIL, FAIL, **PASS lần 3** (`phone=None`) | FAIL, **PASS lần 2** (`phone=None`) |
+| 2 | FAIL, FAIL, FAIL → **fallback `None`** | FAIL, **PASS lần 2** (`phone=None`) |
+| 3 | FAIL, **PASS lần 2** (`phone=None`) | FAIL, **PASS lần 2** (`phone=None`) |
+
+- Dự đoán trước: model chỉ có 2 đường, giữ `090123` (fail mãi) hoặc bịa thêm số (pass nhưng sai).
+  Thực tế có **đường thứ 3: đổi `phone` thành `null`** → validator cho qua (`if value is None: return None`).
+- ⚠️ **Pass ≠ đúng**: khách **có** gửi số (chỉ gõ thiếu), giờ đơn trông như khách không gửi số. `note` không còn dấu vết
+  `090123` → shop không biết để hỏi lại. Code đếm là "pass sau retry", y như sửa thành công thật.
+  Model tìm cách **rẻ nhất để qua validator**, không phải sửa lỗi. Prompt cấm bịa số, schema cho `null` → chọn `null`.
+- **Không lần nào bịa số** ở cả 2 model → quy tắc 3 trong prompt có tác dụng.
+- **Cùng model, mỗi lần chạy khác nhau** (luna: pass lần 3 / fallback / pass lần 2). Không truyền `temperature` →
+  sinh token có ngẫu nhiên. Muốn biết xu hướng phải chạy nhiều lần.
+- **Khác model, cư xử khác**: 4o-mini bỏ cuộc ngay sau lỗi đầu (đổi sang `null`), luna giữ lâu hơn và có lúc rơi vào fallback.
+  - Giả thuyết (**chưa kiểm chứng đủ**): luna theo quy tắc 3 chặt hơn nên giữ `090123` lâu hơn.
+    Sau khi `format_errors` in `input`, log lần fail đều là `phone = '090123'`, nhưng đợt chạy đó cả 2 model đều
+    sửa ở lần 2 (tin báo lỗi đã nói rõ cách xử lý) → chưa thấy lại hành vi "giữ lâu".
+  - → Tỉ lệ pass / fallback ở Bài 5 phụ thuộc model; ghi rõ model khi ghi số liệu.
+- Retry giúp được lỗi **model đọc sai/định dạng sai**. Lỗi do **khách gõ sai** (số thiếu) thì model không thể biết số đúng
+  → retry chỉ đẩy model tới chỗ bỏ trống hoặc bịa.
+
+### Sửa tin báo lỗi để giữ lại số khách gõ
+
+3 phiên bản tin báo lỗi (cùng tin `090123`, mỗi model 3 lần):
+
+| Phiên bản | Tin báo lỗi | Kết quả |
+|---|---|---|
+| v1 | `"Kết quả trước bị lỗi: {str(e)}. Hãy sửa lại."` | `phone=None`, note **không có** `090123`. luna có lần fail cả 3 → fallback |
+| v2 | "...Nếu không thể sửa, hãy để field đó là null." | 6/6 pass lần 2, `phone=None`, note **không có** `090123` → mất thông tin 100% |
+| v3 | "...để null **và cập nhật vào note**" | 6/6 note có nhắc SĐT sai, nhưng chỉ **2/6** có `090123`; 4o-mini **ghi đè** note khách 2/3 lần; mỗi lần 1 format |
+| v4 | Có `input` trong lỗi + "giữ nguyên note cũ, nối thêm đúng mẫu `'SĐT khách gõ không hợp lệ: <giá trị>'`" + quy tắc 4 thêm ngoại lệ | luna **3/3 đúng**, giống hệt nhau. 4o-mini 3/3 có `090123` nhưng **1/3 vẫn mất** "giao giờ hành chính" |
+
+- v4 so với v3: chỉ dẫn mơ hồ ("cập nhật vào note") → model tự diễn giải, mỗi lần một kiểu. Nói rõ **ghi gì, mẫu nào,
+  giữ hay xóa cái cũ** → ổn định hơn hẳn.
+- `format_errors` phải có `input`: tin báo lỗi nhắc lại `'090123'` thì model không phải tự tìm lại trong câu trả lời trước.
+- Prompt và tin báo lỗi phải khớp nhau: quy tắc 4 cấm ghi nhận xét vào note → phải thêm ngoại lệ, không thì 2 chỉ dẫn mâu thuẫn.
+- Tin số đúng (Lan): PASS lần 1 ở cả 2 model → sửa tin báo lỗi không ảnh hưởng ca bình thường.
+- **Giới hạn của cách sửa prompt**: tốt lên nhiều nhưng không 100% (4o-mini vẫn ghi đè 1/3). Muốn chắc chắn → để **code**
+  tự ghi: lưu `input` của lỗi phone từ lần fail đầu, rồi ở cả lối ra PASS (nếu `phone is None`) lẫn fallback,
+  gán `phone=None` + nối vào `note`. Code có sẵn dữ liệu trong `e.errors()`, không phụ thuộc model nghe lời.
+- Mẫu `'SĐT khách gõ không hợp lệ'` đang viết riêng cho phone; thêm validator khác thì phải tổng quát hóa tin báo lỗi.
+
 Chọn fallback nào, vì sao:
 
--
+- **Lỗi không sửa được (khách gõ sai) → giữ đơn, `phone = None`, ghi số khách gõ vào `note`** (do model làm theo tin
+  báo lỗi v4). Lý do: đơn vẫn có giá trị (đủ món, có ghi chú giao hàng), shop chỉ cần nhắn hỏi lại số;
+  bỏ cả đơn (`return None`) là mất khách vì 1 field.
+- **Hết số lần thử vẫn fail / `output_parsed is None` → `return None`**. Hiếm gặp sau v4; nếu gặp thì không có kết quả
+  đáng tin để giữ.
+- Đánh đổi: `note` giờ lẫn yêu cầu khách + ghi chú hệ thống. Sạch hơn là thêm field riêng (ví dụ `warnings: list[str]`),
+  nhưng phải đổi schema → để sau.
 
 ## Bài 5 — 10 tin nhắn
 
+### Cách đo
+
+- `extract_with_retry` trả `ExtractResult(order, attempts, input_tokens, output_tokens)` thay vì `Order | None`
+  (giống `Measurement` Buổi 4) → bên ngoài biết số lần gọi LLM và token **cộng dồn qua mọi lần thử** của 1 tin.
+  Token cộng ngay sau `parse`, trước mọi `return` → lần gọi bị từ chối cũng được tính tiền.
+- Cost: `PRICES` + `cost_usd` chép từ Buổi 4 (giá tra 2026-09-30), `result_cost(result)` tra giá theo `MODEL`.
+  ⚠️ `model: str = MODEL` là default chốt lúc định nghĩa hàm → đổi `MODEL` lúc runtime thì phải truyền model rõ ràng.
+- Phân loại (theo code): pass ngay = có order + `attempts == 1`; pass sau retry = có order + `attempts > 1`;
+  fallback = `order is None`. Đếm riêng "pass nhưng bỏ SĐT sai, ghi vào note" vì đó là đơn chưa đủ, shop phải hỏi lại.
+
+### Kết quả (`gpt-6-luna`)
+
 | Chỉ số | Giá trị |
 |---|---|
-| Pass ngay lần đầu | |
-| Pass sau retry | |
-| Fallback | |
-| Đúng thật (tự kiểm bằng mắt) | |
-| Tổng token | |
-| Tổng cost | |
+| Pass ngay lần đầu | 9/10 |
+| Pass sau retry | 1/10 (tin 7, bỏ SĐT sai và ghi vào note) |
+| Fallback | 0/10 |
+| Trích xuất đúng thật (so với tin gốc) | 10/10 |
+| Đơn đủ thông tin để giao (SĐT hợp lệ + địa chỉ cụ thể + có món) | 5/10 (tin 1, 5, 6, 8, 9) |
+| Tổng token | in = 7483, out = 1225 |
+| Tổng cost | $0.001361 (~$0.000136 / tin) |
+
+- 2 lần chạy cho cùng phân loại (9 / 1 / 0). Token, cost lấy từ lần 1; bảng từng tin bên dưới lấy từ lần 2.
+- Ước tính: 1000 tin/ngày ≈ $0.14/ngày ≈ $4/tháng với luna.
+- Đánh giá đúng/sai do Claude chấm theo tiêu chí bên dưới, **cần tự duyệt lại**.
+
+| # | Tình huống | Lần thử | Model trích ra | Trích đúng? | Đủ để giao? |
+|---|---|---|---|---|---|
+| 1 | mẫu: đủ thông tin | PASS 1 | Tùng, `0935111222`, 45 Lê Lợi Đà Nẵng, 3 áo polo L | ✅ | ✅ |
+| 2 | mẫu: "e ở Cần Thơ" | PASS 1 | `address: "Cần Thơ"`, 1 váy hoa, size null | ✅ | ❌ chỉ có tỉnh, không SĐT |
+| 3 | mẫu: không dấu | PASS 1 | `0912345678`, 2 áo thun M + 1 áo khoác XL, note "Giao giờ hành chính" | ✅ | ❌ không địa chỉ |
+| 4 | teencode + thiếu info | PASS 1 | `address: "Q7"`, 2 áo thun size null, note "Không cần giao gấp" | ✅ | ❌ chỉ có quận, không SĐT |
+| 5 | nhiều món | PASS 1 | 2 quần jean L + 1 áo thun S, 456 Trần Phú HCM | ✅ | ✅ |
+| 6 | đổi ý "à thôi lấy size L" | PASS 1 | 1 váy hoa **L** | ✅ | ✅ |
+| 7 | SĐT sai, đứng đầu, dính món | FAIL → PASS | `phone: null`, note "Gọi trước khi giao\nSĐT khách gõ không hợp lệ: 0901 2345" | ✅ | ❌ phải hỏi lại SĐT |
+| 8 | nhiều món | PASS 1 | 1 áo khoác XL + 2 quần short M | ✅ | ✅ |
+| 9 | lẫn tiếng Anh | PASS 1 | 1 hoodie S + 1 cap (size null), note "Ship COD" | ✅ | ✅ |
+| 10 | không phải đơn | PASS 1 | toàn null, `items: []` | ✅ | (không áp dụng) |
+
+### Nhận xét
+
+- **"Pass" bị đếm cao hơn thực tế**: tin 10 không phải đơn nhưng vẫn tính "pass ngay" (hạn chế `items == []` ở Bài 3).
+  Tin 7 tính "pass sau retry" dù đơn chưa dùng được. → Pass 10/10, nhưng **dùng được ngay chỉ 5/10**.
+- **3 mức khác nhau**: pass validation (schema + validator) ≠ trích đúng (khớp tin gốc) ≠ đủ để xử lý (nghiệp vụ).
+  Validator chỉ bắt được mức 1. Tin 2, 4 trích **đúng** (model không bịa, đúng quy tắc 1) nhưng đơn **không đủ**:
+  đó là việc của logic nghiệp vụ (ví dụ kiểm thiếu SĐT/địa chỉ → nhắn hỏi lại), không phải của LLM.
+- Model làm tốt: đổi ý giữa chừng (tin 6), tách SĐT sai dính liền món (tin 7), không bịa size (tin 2, 4, 9),
+  hiểu teencode (tin 4), giữ nguyên tên món tiếng Anh (tin 9).
+- **Cost do prompt + schema quyết định**: tin khách ~30 token, nhưng 1 lần gọi ~650 token input
+  (`EXTRACT_INSTRUCTIONS` + JSON schema có `description`, gửi lại mỗi lần). Retry gửi lại cả lịch sử
+  → tin `090123` (Bài 4): 2 lần gọi = 1511 token in, so với 660 khi pass ngay. Muốn giảm cost: rút gọn prompt/schema.
+- Bộ test còn dễ: luna trích đúng 10/10. Muốn thử khó hơn: `+84 901 234 567` (số **thật, hợp lệ** nhưng validator
+  từ chối → lỗi do validator chứ không phải do khách), 2 SĐT trong 1 tin, số lượng bằng chữ ("hai cái"), đổi món chứ không chỉ đổi size.
 
 Tin nào khó nhất, vì sao:
 
--
+- **Tin 7** (`"0901 2345 áo thun M x1, ..."`): SĐT sai nằm đầu câu, dính liền tên món, không có chữ "sđt" đánh dấu.
+  Là tin duy nhất cần retry. Model vẫn tách đúng số khỏi món và giữ được note "gọi trước khi giao".
+- Khó theo nghĩa nghiệp vụ: **tin 2, 4** (địa chỉ chỉ có tỉnh/quận). Pass và trích đúng, nhưng hệ thống không
+  tự nhận ra đơn chưa giao được.
