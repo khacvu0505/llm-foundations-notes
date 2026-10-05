@@ -92,13 +92,28 @@ Nguồn gợi ý: docs fine-tuning của OpenAI, bài giới thiệu LoRA bất 
 
 ## Bài 2 — System prompt + lệnh
 
+_(Claude viết, 2026-10-05, chạy thật với `gpt-6-luna`)_
+
 `instructions` vs message role `"system"` trong lịch sử:
 
--
+- Docstring SDK: `instructions` là "a system (or developer) message inserted into the model's context". Bản chất vẫn là system message, chỉ khác chỗ mình để nó.
+- `instructions` nằm **ngoài** list `history`, mỗi lần gọi API gửi kèm riêng:
+  - `/reset` xóa `history` mà system prompt vẫn còn, không phải thêm lại.
+  - `/history` không hiện system prompt.
+  - Đổi prompt chỉ là gán lại 1 biến, không phải tìm và sửa message trong list.
+  - Bài 4 (sliding window) cắt lịch sử không bao giờ đụng vào system prompt.
+- Để role `"system"` trong `history` thì nó là 1 phần tử của list:
+  - `/reset` phải nhớ thêm lại, sliding window phải nhớ chừa nó ra.
+  - Đổi giữa chừng thì phải thay `history[0]`, hoặc thêm system message mới vào giữa (lúc đó context có 2 system message mâu thuẫn).
+- Dù để ở đâu thì system prompt vẫn được gửi lên **mỗi lượt**, nên vẫn tốn input token mỗi lượt (suy ra từ docstring, chưa đo; kiểm chứng ở Bài 3 bằng `usage.input_tokens`).
 
 Đổi `/system` giữa chừng thì sao:
 
--
+- Kịch bản: 2 lượt prompt mặc định (giới thiệu Hà Nội, kể món ăn) → `/system Trả lời như cướp biển` → 2 lượt nữa.
+- Giọng văn đổi **ngay lượt đầu tiên** sau lệnh: "Bạn tên An đó, thuyền trưởng ạ! 🏴‍☠️", "Thuyền trưởng An hãy dạo quanh Hồ Gươm...".
+- Vẫn nhớ tên An và vẫn hiểu "ở đó" là Hà Nội, vì `history` không bị đụng tới.
+- Các lượt cũ **không bị viết lại**: câu trả lời cũ trong `history` vẫn giọng bình thường. Prompt mới chỉ áp cho những lần gọi API từ đó về sau, nhưng mỗi lần gọi model đọc lại toàn bộ lượt cũ dưới prompt mới.
+- Giọng cướp biển khá nhẹ (gọi "thuyền trưởng", thêm emoji). Giả thuyết, chưa kiểm: prompt quá ngắn + các câu trả lời cũ giọng bình thường trong lịch sử kéo model về giọng cũ. Thử: viết prompt chi tiết hơn, hoặc `/reset` rồi mới hỏi, xem giọng có đậm hơn không.
 
 ## Bài 3 — Token / cost tracker
 

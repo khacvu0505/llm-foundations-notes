@@ -1,4 +1,6 @@
 from dotenv import load_dotenv
+from openai import OpenAI
+from openai.types.responses import ResponseInputParam
 
 load_dotenv()  # load .env, có OPENAI_API_KEY
 
@@ -41,7 +43,46 @@ load_dotenv()  # load .env, có OPENAI_API_KEY
 #   - Tự kiểm: lượt 1 "Tên mình là An", vài lượt sau hỏi "Mình tên gì?" → bot phải nhớ.
 #   - (Tùy chọn) In câu trả lời bằng streaming như Buổi 4 bài 3.
 
-# TODO: viết code ở đây
+client = OpenAI()
+MODEL = "gpt-6-luna"
+
+
+def chat_turn(history: ResponseInputParam, user_input: str) -> str:
+    # Biến dùng để tích lũy toàn bộ câu trả lời từ stream
+    full_response = ""
+    stream = client.responses.create(
+        model=MODEL,
+        input=history + [{"role": "user", "content": user_input}],
+        stream=True,
+    )
+    print("Bot: ", end="", flush=True)
+    for event in stream:
+        if event.type == "response.output_text.delta":
+            content = event.delta  # Lấy nội dung text vừa đổ về
+            print(content, end="", flush=True)
+            full_response += content
+    print()
+    return full_response
+
+
+def bai1_run() -> None:
+    history: ResponseInputParam = []
+    print("Bắt đầu trò chuyện với OpenAI Responses API (Gõ '/exit' để thoát)")
+    try:
+        while True:
+            user_msg = input("Bạn: ").strip()
+            if user_msg == "/exit":
+                break
+            if user_msg == "":
+                continue
+            reply = chat_turn(history, user_msg)
+            history.append({"role": "user", "content": user_msg})
+            history.append({"role": "assistant", "content": reply})
+
+    except (EOFError, KeyboardInterrupt):
+        print()
+
+    print("Kết thúc trò chuyện với OpenAI Responses API")
 
 
 # ============================================================================
@@ -61,6 +102,79 @@ load_dotenv()  # load .env, có OPENAI_API_KEY
 #   - Thử: /system "Trả lời như cướp biển" giữa cuộc hội thoại, xem giọng văn đổi ngay không.
 
 # TODO: viết code ở đây
+
+
+def chat_turn_with_system(
+    history: ResponseInputParam,
+    user_input: str,
+    system: str,
+) -> str:
+
+    stream = client.responses.create(
+        model=MODEL,
+        instructions=system,
+        input=history + [{"role": "user", "content": user_input}],
+        stream=True,
+    )
+    full_response = ""
+    print("Bot: ", end="", flush=True)
+    for event in stream:
+        if event.type == "response.output_text.delta":
+            content = event.delta
+            full_response += content
+            print(content, end="", flush=True)
+    print()
+    return full_response
+
+
+def bai2_run() -> None:
+    history: ResponseInputParam = []
+    print(
+        "Bắt đầu trò chuyện với OpenAI Responses API"
+        " (Gõ '/exit' để thoát)\n"
+        " (Gõ '/system <nội dung>' để đổi system prompt)\n"
+        " (Gõ '/reset' để xóa lịch sử)\n"
+        " (Gõ '/history' để in lịch sử)\n"
+    )
+
+    system: str = "Bạn là trợ lý trả lời chính xác và ngắn gọn bằng tiếng Việt"
+    cmd = {"/reset", "/history", "/exit"}
+    try:
+        while True:
+            user_msg = input("Bạn: ").strip()
+            if not user_msg:
+                continue
+            if user_msg.startswith("/") and user_msg not in cmd:
+                if user_msg.startswith("/system "):
+                    system = user_msg[len("/system ") :].strip()
+                    print("Đã đổi system prompt.")
+                else:
+                    print("lệnh không hợp lệ, thử lệnh khác ")
+                continue
+
+            match user_msg:
+                case "/exit":
+                    break
+                case "/reset":
+                    history = []
+                    print("Đã xóa lịch sử.")
+                case "/history":
+                    if not history:
+                        print("(lịch sử trống)")
+                    for i, m in enumerate(history, start=1):
+                        text = str(m.get("content", "")).replace("\n", " ")
+                        if len(text) > 60:
+                            text = text[:60] + "..."
+                        print(f"{i}. {m.get('role')}: {text}")
+                case _:
+                    reply = chat_turn_with_system(history, user_msg, system)
+                    history.append({"role": "user", "content": user_msg})
+                    history.append({"role": "assistant", "content": reply})
+
+    except (EOFError, KeyboardInterrupt):
+        print()
+
+    print("Kết thúc trò chuyện với OpenAI Responses API")
 
 
 # ============================================================================
@@ -113,4 +227,6 @@ load_dotenv()  # load .env, có OPENAI_API_KEY
 
 
 if __name__ == "__main__":
-    pass
+    # bai1_run()
+
+    bai2_run()
