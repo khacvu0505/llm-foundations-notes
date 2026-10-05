@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from dotenv import load_dotenv
 from openai import OpenAI
 from openai.types.responses import ResponseInputParam
@@ -189,7 +191,136 @@ def bai2_run() -> None:
 #     Input token tăng thế nào qua từng lượt? Vì sao? Lượt thứ 20 sẽ tốn bao nhiêu so với lượt 1?
 #   - Ước tính: nếu không làm gì, hội thoại 100 lượt tốn bao nhiêu? Bao giờ thì tràn context window?
 
+
 # TODO: viết code ở đây
+
+# Giá USD / 1M token (input, output), tra ngày 2026-09-30 (chép từ Buổi 5)
+# Nguồn: developers.openai.com/api/docs/pricing
+PRICES: dict[str, tuple[float, float]] = {
+    "gpt-4.1-nano": (0.10, 0.40),
+    "gpt-4o-mini": (0.15, 0.60),
+    "gpt-6-luna": (0.10, 0.50),
+}
+
+
+def cost_usd(
+    input_tokens: int, output_tokens: int, price_in_per_mtok: float, price_out_per_mtok: float
+) -> float:
+    return (input_tokens / 1_000_000) * price_in_per_mtok + (
+        output_tokens / 1_000_000
+    ) * price_out_per_mtok
+
+
+@dataclass
+class TurnResult:
+    reply: str
+    input_tokens: int
+    output_tokens: int
+
+
+def chat_turn_with_usage(
+    history: ResponseInputParam,
+    user_input: str,
+    system: str,
+) -> TurnResult:
+    stream = client.responses.create(
+        model=MODEL,
+        instructions=system,
+        input=history + [{"role": "user", "content": user_input}],
+        stream=True,
+    )
+    print("Bot: ", end="", flush=True)
+    full_response = ""
+    input_tokens = 0
+    output_tokens = 0
+
+    for event in stream:
+        if event.type == "response.output_text.delta":
+            content = event.delta
+            full_response += content
+            print(content, end="", flush=True)
+        elif event.type == "response.completed":
+            usage = event.response.usage
+            input_tokens = usage.input_tokens if usage else 0
+            output_tokens = usage.output_tokens if usage else 0
+
+    print()
+
+    return TurnResult(reply=full_response, input_tokens=input_tokens, output_tokens=output_tokens)
+
+
+def bai3_run() -> None:
+    history: ResponseInputParam = []
+    print(
+        "Bắt đầu trò chuyện với OpenAI Responses API"
+        " (Gõ '/exit' để thoát)\n"
+        " (Gõ '/system <nội dung>' để đổi system prompt)\n"
+        " (Gõ '/reset' để xóa lịch sử)\n"
+        " (Gõ '/history' để in lịch sử)\n"
+        " (Gõ '/stats' để xem tổng token và cost)\n"
+    )
+
+    system: str = "Bạn là trợ lý trả lời chính xác và ngắn gọn bằng tiếng Việt"
+    cmd = {"/reset", "/history", "/exit", "/stats"}
+    price_in, price_out = PRICES[MODEL]
+    turns = 0
+    total_input = 0
+    total_output = 0
+    total_cost = 0.0
+    try:
+        while True:
+            user_msg = input("Bạn: ").strip()
+            if not user_msg:
+                continue
+            if user_msg.startswith("/") and user_msg not in cmd:
+                if user_msg.startswith("/system "):
+                    system = user_msg[len("/system ") :].strip()
+                    print("Đã đổi system prompt.")
+                else:
+                    print("lệnh không hợp lệ, thử lệnh khác ")
+                continue
+
+            match user_msg:
+                case "/exit":
+                    break
+                case "/reset":
+                    # Chỉ xóa lịch sử, số liệu /stats tính từ đầu phiên nên giữ nguyên
+                    history = []
+                    print("Đã xóa lịch sử (số liệu /stats vẫn giữ).")
+                case "/history":
+                    if not history:
+                        print("(lịch sử trống)")
+                    for i, m in enumerate(history, start=1):
+                        text = str(m.get("content", "")).replace("\n", " ")
+                        if len(text) > 60:
+                            text = text[:60] + "..."
+                        print(f"{i}. {m.get('role')}: {text}")
+                case "/stats":
+                    print(
+                        f"Số lượt: {turns} | Tổng input: {total_input} token"
+                        f" | Tổng output: {total_output} token | Tổng cost: ${total_cost:.6f}"
+                    )
+                case _:
+                    result = chat_turn_with_usage(history, user_msg, system)
+                    history.append({"role": "user", "content": user_msg})
+                    history.append({"role": "assistant", "content": result.reply})
+
+                    turn_cost = cost_usd(
+                        result.input_tokens, result.output_tokens, price_in, price_out
+                    )
+                    turns += 1
+                    total_input += result.input_tokens
+                    total_output += result.output_tokens
+                    total_cost += turn_cost
+                    print(
+                        f"[lượt {turns}] in: {result.input_tokens} | out: {result.output_tokens}"
+                        f" | cost: ${turn_cost:.6f} | tổng: ${total_cost:.6f}"
+                    )
+
+    except (EOFError, KeyboardInterrupt):
+        print()
+
+    print("Kết thúc trò chuyện với OpenAI Responses API")
 
 
 # ============================================================================
@@ -229,4 +360,6 @@ def bai2_run() -> None:
 if __name__ == "__main__":
     # bai1_run()
 
-    bai2_run()
+    # bai2_run()
+
+    bai3_run()

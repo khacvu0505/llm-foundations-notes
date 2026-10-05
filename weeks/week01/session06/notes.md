@@ -117,22 +117,54 @@ _(Claude viết, 2026-10-05, chạy thật với `gpt-6-luna`)_
 
 ## Bài 3 — Token / cost tracker
 
+_(Claude viết, 2026-10-05, chạy thật `bai3_run` với `gpt-6-luna`, giá $0.10 / $0.50 mỗi 1M token,
+context window 1,050,000 — tra developers.openai.com/api/docs/models/gpt-6-luna cùng ngày)_
+
+Kịch bản 6 câu ngắn, cùng 1 chủ đề: "Tên mình là An, mình học Python" → hỏi thư viện gọi API → ví dụ
+→ thư viện async → so sánh → "Mình tên gì và đang học gì?" (bot vẫn nhớ đúng).
+
 | Lượt | Input token | Output token | Cost lượt | Tổng cost |
 | ---- | ----------- | ------------ | --------- | --------- |
-| 1    |             |              |           |           |
-| 2    |             |              |           |           |
-| 3    |             |              |           |           |
-| 4    |             |              |           |           |
-| 5    |             |              |           |           |
-| 6    |             |              |           |           |
+| 1    | 35          | 45           | $0.000026 | $0.000026 |
+| 2    | 70          | 103          | $0.000058 | $0.000084 |
+| 3    | 145         | 44           | $0.000036 | $0.000121 |
+| 4    | 180         | 90           | $0.000063 | $0.000184 |
+| 5    | 254         | 37           | $0.000044 | $0.000228 |
+| 6    | 306         | 12           | $0.000037 | $0.000264 |
+
+`/stats`: 6 lượt, tổng input 990, tổng output 331, tổng cost $0.000264.
 
 Input token tăng thế nào, vì sao:
 
--
+- Tăng **mỗi lượt**, không bao giờ giảm: 35 → 70 → 145 → 180 → 254 → 306 (lượt 6 gấp ~9 lần lượt 1).
+- Vì API không nhớ gì, mỗi lượt mình gửi lại **toàn bộ** `history` + câu mới. Lượt n tăng thêm so với
+  lượt n-1 đúng bằng: câu trả lời lượt trước + câu hỏi mới (+ vài token khung message).
+  Mỗi lượt tăng thêm 35–75 token, trung bình ~54.
+- Phần tăng **không bằng** output token lượt trước (lượt 1 out 45 nhưng lượt 2 chỉ tăng 35), vì
+  `gpt-6-luna` có **reasoning token**: gọi thử 1 lần thấy `output_tokens=59`, trong đó
+  `reasoning_tokens=38`, chữ hiện ra chỉ ~15 token (tiktoken). Reasoning token vẫn bị tính tiền output
+  nhưng không nằm trong `history`, nên không bị gửi lại lượt sau.
+- Cost từng lượt **không** tăng đều như input, vì output (đắt gấp 5 lần input) lên xuống theo độ dài câu
+  trả lời: lượt 6 input lớn nhất nhưng cost chỉ $0.000037 do bot trả lời rất ngắn (12 token).
+
+Lượt 20 so với lượt 1 (ngoại suy tuyến tính, ~54 token/lượt, output trung bình ~55):
+
+- Input lượt 20 ≈ 35 + 19 × 54 ≈ **1,065 token**, gấp ~30 lần lượt 1.
+- Cost lượt 20 ≈ **$0.000134**, gấp ~5 lần lượt 1. Gấp ít hơn input vì giai đoạn đầu tiền chủ yếu nằm ở
+  output, càng về sau phần input mới chiếm ưu thế.
 
 Ước tính 100 lượt / khi nào tràn context window:
 
--
+- Input mỗi lượt tăng tuyến tính, nên **tổng** input của cả cuộc hội thoại tăng theo bình phương số lượt
+  (1 + 2 + … + n ≈ n²/2).
+- 100 lượt: tổng input ≈ 271,790 token, output ≈ 5,500 → **≈ $0.03**. Nếu không gửi lịch sử (mỗi lượt
+  độc lập) thì chỉ ≈ $0.003, tức gửi lịch sử đắt gấp ~10 lần, và tỉ lệ này còn tăng theo số lượt.
+- Context window 1,050,000 token: với câu ngắn như trên (~54 token/lượt) phải tới **~19,000 lượt** mới tràn.
+  Nhưng nếu mỗi lượt thêm ~2,000 token (dán code, tài liệu) thì **~526 lượt** đã tràn, và gần lúc đó
+  mỗi lượt tốn ~$0.10 chỉ riêng tiền input.
+- Kết luận: với câu ngắn, vấn đề đến trước là **tiền** tăng dần, chứ không phải tràn context
+  (độ trễ có thể cũng tăng theo input, chưa đo).
+  Đó là lý do Bài 4 làm sliding window: chặn input mỗi lượt dưới 1 ngưỡng cố định.
 
 ## Bài 4 — Sliding window
 
