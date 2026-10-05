@@ -1,0 +1,272 @@
+<title>LLM từ đâu ra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;800&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+  /* Layout: một tờ ôn bài dọc — pipeline 3 bước nằm ngang (xếp dọc trên điện thoại), rồi bảng chọn công cụ, rồi liên hệ bài đã làm */
+  :root {
+    --bg: #f5f7fa;
+    --surface: #ffffff;
+    --fg: #1b2433;
+    --muted: #5b6678;
+    --line: #dde3ec;
+    --accent: #2f5bd3;
+    --accent-soft: #e6edfc;
+    --warn: #a35b00;
+    --warn-soft: #fdf1e1;
+    --font-body: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10151e; --surface: #182030; --fg: #e5eaf2; --muted: #9aa6b9; --line: #2a3446;
+      --accent: #7f9ff5; --accent-soft: #1f2b47; --warn: #f0b062; --warn-soft: #33260f;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10151e; --surface: #182030; --fg: #e5eaf2; --muted: #9aa6b9; --line: #2a3446;
+    --accent: #7f9ff5; --accent-soft: #1f2b47; --warn: #f0b062; --warn-soft: #33260f;
+    color-scheme: dark;
+  }
+
+  body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 16px; line-height: 1.6; }
+  .page { max-width: 1040px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 64px; display: grid; gap: 56px; }
+  h1, h2, h3 { margin: 0; text-wrap: balance; line-height: 1.25; }
+  h1 { font-size: clamp(1.9rem, 4vw, 2.6rem); font-weight: 800; letter-spacing: -0.02em; }
+  h2 { font-size: 1.45rem; font-weight: 800; letter-spacing: -0.01em; }
+  h3 { font-size: 1.1rem; font-weight: 600; }
+  p { margin: 0; }
+  .eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+  .lede { color: var(--muted); max-width: 62ch; }
+  header { display: grid; gap: 12px; }
+  section { display: grid; gap: 20px; }
+  .section-head { display: grid; gap: 6px; }
+
+  /* Pipeline */
+  .pipeline { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 12px; }
+  .stage { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 14px; align-content: start; min-width: 0; }
+  .stage-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .step { font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent); }
+  .metaphor { font-size: 0.9rem; color: var(--muted); }
+  .field { display: grid; gap: 2px; }
+  .field dt { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .field dd { margin: 0; }
+  dl { margin: 0; display: grid; gap: 12px; }
+  .arrow { align-self: center; color: var(--muted); font-size: 1.4rem; }
+  .arrow::before { content: "→"; }
+  .result { background: var(--accent-soft); border-radius: 8px; padding: 10px 12px; }
+
+  .abbr { font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); line-height: 1.5; }
+  .abbr b { color: var(--accent); font-weight: 500; }
+  .compare { display: grid; gap: 12px; }
+  .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 0.95rem; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+  thead th { font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent); font-weight: 500; }
+  tbody th { font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .glossary { gap: 12px; }
+  .glossary h2 { font-size: 0.75rem; }
+  .glossary tbody th { color: var(--accent); font-family: var(--font-mono); font-weight: 500; }
+  .keypoints { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .point { border-top: 2px solid var(--accent); padding-top: 12px; display: grid; gap: 6px; min-width: 0; }
+  .point p { color: var(--muted); font-size: 0.95rem; }
+  .point strong { color: var(--fg); }
+
+  /* Chọn công cụ */
+  .rule { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: grid; gap: 10px; }
+  .rule-lines { display: grid; gap: 8px; }
+  .rule-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding-bottom: 8px; border-bottom: 1px dashed var(--line); }
+  .rule-line:last-child { border-bottom: 0; padding-bottom: 0; }
+  .tag { font-family: var(--font-mono); font-size: 0.8rem; padding: 3px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+  .tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .tool { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+  .tool .when { font-size: 0.95rem; }
+  .tool .cost { font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); }
+  .note { font-size: 0.95rem; color: var(--muted); }
+  .trap { background: var(--warn-soft); border-radius: 12px; padding: 16px 18px; display: grid; gap: 6px; }
+  .trap .eyebrow { color: var(--warn); }
+
+  /* Liên hệ */
+  .links { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .link-card { border-left: 3px solid var(--line); padding-left: 14px; display: grid; gap: 4px; min-width: 0; }
+  .link-card .eyebrow { color: var(--muted); }
+
+  footer { border-top: 1px solid var(--line); padding-top: 20px; display: grid; gap: 8px; font-size: 0.9rem; color: var(--muted); }
+  footer a { color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (max-width: 760px) {
+    .pipeline { grid-template-columns: 1fr; }
+    .arrow { justify-self: center; }
+    .arrow::before { content: "↓"; }
+    .keypoints, .tools, .links { grid-template-columns: 1fr; }
+  }
+</style>
+
+<main class="page">
+  <header>
+    <span class="eyebrow">Buổi 6 · Lý thuyết #2</span>
+    <h1>LLM từ đâu ra, và khi nào dùng công cụ nào</h1>
+    <p class="lede">Bản ôn nhanh: ba bước biến một mô hình đoán chữ thành chatbot, và cách chọn giữa prompt, RAG, fine-tune. Đọc xong, tự viết lại "Bản của mình" trong notes.md bằng trí nhớ.</p>
+  </header>
+
+  <section aria-labelledby="s0" class="glossary">
+    <h2 id="s0" class="eyebrow">Thuật ngữ viết tắt</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th scope="col">Viết tắt</th><th scope="col">Tên đầy đủ</th><th scope="col">Nghĩa</th><th scope="col">Ý chính</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">SFT</th>
+            <td><span class="abbr"><b>S</b>upervised <b>F</b>ine-<b>T</b>uning</span></td>
+            <td>Tinh chỉnh có giám sát</td>
+            <td><strong>Người viết</strong> câu trả lời mẫu, model bắt chước</td>
+          </tr>
+          <tr>
+            <th scope="row">RLHF</th>
+            <td><span class="abbr"><b>R</b>einforcement <b>L</b>earning from <b>H</b>uman <b>F</b>eedback</span></td>
+            <td>Học tăng cường từ phản hồi của con người</td>
+            <td><strong>Model viết</strong> vài câu, <strong>người chọn</strong> câu tốt hơn → huấn luyện reward model ("máy chấm điểm")</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Supervised = có đáp án mẫu · Fine-Tuning = train thêm trên model có sẵn, không train lại từ đầu · Reinforcement Learning = học bằng cách thử, nhận điểm thưởng rồi điều chỉnh.</p>
+  </section>
+
+  <section aria-labelledby="s1">
+    <div class="section-head">
+      <span class="eyebrow">Phần 1</span>
+      <h2 id="s1">Đọc sách → học việc → được chấm điểm</h2>
+    </div>
+
+    <div class="pipeline">
+      <article class="stage">
+        <div class="stage-top"><span class="step">Bước 1</span><h3>Pretraining</h3></div>
+        <span class="metaphor">Đọc hết thư viện</span>
+        <dl>
+          <div class="field"><dt>Học từ</dt><dd>Văn bản khổng lồ từ internet</dd></div>
+          <div class="field"><dt>Kết quả</dt><dd class="result">Giỏi <strong>đoán chữ tiếp theo</strong>, biết nhiều kiến thức. Nhưng chỉ biết "viết tiếp", chưa biết trả lời câu hỏi.</dd></div>
+        </dl>
+      </article>
+      <span class="arrow" aria-hidden="true"></span>
+      <article class="stage">
+        <div class="stage-top"><span class="step">Bước 2</span><h3>SFT</h3></div>
+        <span class="metaphor">Học việc theo mẫu</span>
+        <span class="abbr"><b>S</b>upervised <b>F</b>ine-<b>T</b>uning · tinh chỉnh có giám sát</span>
+        <dl>
+          <div class="field"><dt>Học từ</dt><dd>Hàng chục nghìn cặp câu hỏi → câu trả lời mẫu do người viết</dd></div>
+          <div class="field"><dt>Kết quả</dt><dd class="result">Biết <strong>cư xử như trợ lý</strong>: hỏi thì đáp. Người làm mẫu, model bắt chước ("behavior cloning").</dd></div>
+        </dl>
+      </article>
+      <span class="arrow" aria-hidden="true"></span>
+      <article class="stage">
+        <div class="stage-top"><span class="step">Bước 3</span><h3>RLHF</h3></div>
+        <span class="metaphor">Được chấm điểm</span>
+        <span class="abbr"><b>R</b>einforcement <b>L</b>earning from <b>H</b>uman <b>F</b>eedback · học tăng cường từ phản hồi của con người</span>
+        <dl>
+          <div class="field"><dt>Học từ</dt><dd>Người <strong>xếp hạng</strong> câu trả lời (A tốt hơn B), dùng để huấn luyện reward model</dd></div>
+          <div class="field"><dt>Kết quả</dt><dd class="result">Trả lời <strong>hữu ích, an toàn</strong>, đúng ý người dùng hơn.</dd></div>
+        </dl>
+      </article>
+    </div>
+
+    <div class="compare">
+      <h3>SFT khác RLHF thế nào</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th scope="col"></th><th scope="col">SFT</th><th scope="col">RLHF</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">Người làm gì</th><td><strong>Viết</strong> câu trả lời mẫu</td><td><strong>Chọn</strong> câu nào tốt hơn</td></tr>
+            <tr><th scope="row">Model học gì</th><td>Bắt chước mẫu</td><td>Trả lời sao cho được điểm cao</td></tr>
+            <tr><th scope="row">Hình ảnh</th><td>Nấu theo công thức mẫu</td><td>Tự nấu 2 món, người nếm chọn món ngon hơn</td></tr>
+            <tr><th scope="row">Chi phí dữ liệu</th><td>Đắt (phải tự viết)</td><td>Rẻ hơn (chỉ cần so sánh)</td></tr>
+            <tr><th scope="row">Thứ tự</th><td>Trước: học format "hỏi thì đáp"</td><td>Sau: trả lời hay và an toàn hơn trong format đó</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="keypoints">
+      <div class="point">
+        <h3>~98% tài nguyên</h3>
+        <p>Pretraining tốn gần hết tính toán và dữ liệu (theo Chip Huyen). <strong>Kiến thức của model đến từ bước này.</strong></p>
+      </div>
+      <div class="point">
+        <h3>Vì sao cần RLHF</h3>
+        <p>Người <strong>so sánh</strong> 2 câu trả lời nhanh hơn nhiều so với tự viết 1 câu hoàn hảo, nên thu được nhiều dữ liệu hơn, rẻ hơn.</p>
+      </div>
+      <div class="point">
+        <h3>Hallucination</h3>
+        <p>Gốc từ pretraining: model học đoán chữ <strong>nghe hợp lý</strong>, không học kiểm tra đúng sai. SFT và RLHF làm giảm, không xóa hẳn.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s2">
+    <div class="section-head">
+      <span class="eyebrow">Phần 2</span>
+      <h2 id="s2">Prompt, RAG hay fine-tune</h2>
+    </div>
+
+    <div class="rule">
+      <span class="eyebrow">Nhớ 1 câu</span>
+      <div class="rule-lines">
+        <div class="rule-line"><span>Model <strong>thiếu kiến thức</strong> (dữ liệu riêng, dữ liệu hay đổi)</span><span class="tag">RAG</span></div>
+        <div class="rule-line"><span>Model <strong>sai cách trả lời</strong> (format, giọng văn) dù prompt đã hết cách</span><span class="tag">Fine-tune</span></div>
+        <div class="rule-line"><span>Còn lại, và luôn là bước đầu tiên</span><span class="tag">Prompt</span></div>
+      </div>
+    </div>
+
+    <div class="tools">
+      <article class="tool">
+        <h3>Prompt</h3>
+        <p class="when">Hướng dẫn model làm gì. <strong>Luôn thử đầu tiên.</strong></p>
+        <span class="cost">rẻ nhất · sửa trong vài phút</span>
+      </article>
+      <article class="tool">
+        <h3>RAG</h3>
+        <p class="when">Tìm tài liệu liên quan rồi dán vào prompt, để đưa <strong>kiến thức</strong> model không có. Hợp với tài liệu nội bộ, giá, tồn kho.</p>
+        <span class="cost">dữ liệu đổi → chỉ cần cập nhật kho tài liệu</span>
+      </article>
+      <article class="tool">
+        <h3>Fine-tune</h3>
+        <p class="when">Dạy <strong>cách trả lời</strong>: format, giọng văn, 1 việc lặp lại nhiều lần. Cần rất nhiều ví dụ mẫu.</p>
+        <span class="cost">LoRA: chỉ train thêm 1 phần nhỏ gắn vào model → rẻ hơn nhiều</span>
+      </article>
+    </div>
+
+    <div class="trap">
+      <span class="eyebrow">Bẫy hay gặp</span>
+      <p>Muốn model "biết" tài liệu công ty nên đem đi fine-tune. Sai công cụ: fine-tune dạy kiến thức kém, tốn kém, dữ liệu đổi là phải train lại. Dùng RAG (phase sau của roadmap).</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="s3">
+    <div class="section-head">
+      <span class="eyebrow">Phần 3</span>
+      <h2 id="s3">Ghép với bài đã làm</h2>
+    </div>
+    <div class="links">
+      <div class="link-card">
+        <span class="eyebrow">Buổi 5 · trích đơn hàng</span>
+        <p>Chỉ cần <strong>prompt + structured output</strong>, không cần fine-tune.</p>
+      </div>
+      <div class="link-card">
+        <span class="eyebrow">Buổi 6 · chatbot</span>
+        <p>Model "nhớ" hội thoại vì mình <strong>gửi lại lịch sử</strong>, không phải nhờ training. Bộ nhớ ngắn hạn do mình tự quản lý: sliding window, tóm tắt.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Nguồn phần 1: <a href="https://huyenchip.com/2023/05/02/rlhf.html">Chip Huyen, "RLHF: Reinforcement Learning from Human Feedback"</a>. Đọc thêm: <a href="https://huggingface.co/blog/rlhf">Hugging Face, "Illustrating RLHF"</a>, video <a href="https://www.youtube.com/watch?v=zjkBMFhNj_g">Karpathy, Intro to Large Language Models</a>.</p>
+    <p>Phần 2 là kiến thức phổ biến, chưa đối chiếu nguồn cụ thể. Bản tham khảo do Claude viết, bản gốc ở weeks/week01/session06/notes.md.</p>
+  </footer>
+</main>
