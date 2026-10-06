@@ -168,22 +168,137 @@ Lượt 20 so với lượt 1 (ngoại suy tuyến tính, ~54 token/lượt, out
 
 ## Bài 4 — Sliding window
 
-Ngưỡng dùng khi test: `MAX_HISTORY_TOKENS = `
+_(Claude viết, 2026-10-06, chạy thật `bai4_run` với `gpt-6-luna`)_
 
-- tiktoken đếm vs `usage.input_tokens`: lệch bao nhiêu, vì sao:
-- Bỏ theo cặp, vì sao:
-- Sau khi lượt "Tên mình là An" bị cắt, bot có nhớ tên không:
+Ngưỡng dùng khi test: `MAX_HISTORY_TOKENS = 300`
+
+Kịch bản: "Tên mình là An." → 4 câu "Giải thích list / dict / tuple / set trong 4-5 câu" → "Mình tên gì?".
+"Lịch sử" = token tiktoken của `history` trước / sau khi cắt (chưa tính câu mới và system prompt).
+
+| Lượt | Lịch sử trước → sau | Bỏ   | Input (API) | tiktoken | Lệch |
+| ---- | ------------------- | ---- | ----------- | -------- | ---- |
+| 1    | 0 → 0               | 0    | 31          | 21       | 10   |
+| 2    | 18 → 18             | 0    | 67          | 47       | 20   |
+| 3    | 145 → 145           | 0    | 204         | 174      | 30   |
+| 4    | 293 → 293           | 0    | 362         | 322      | 40   |
+| 5    | 420 → 275           | 2    | 334         | 304      | 30   |
+| 6    | 402 → 254           | 1    | 305         | 275      | 30   |
+
+- Input **ngừng tăng**: lên tới 362 ở lượt 4 rồi dao động quanh ~300–330, thay vì tăng mãi như Bài 3.
+- Ngưỡng chỉ chặn **phần lịch sử**, nên input thật có lúc vẫn > 300 (lượt 4: lịch sử 293 + câu mới
+  + system prompt 16 token + phần khung = 362).
+- Lượt 5 bỏ liền 2 cặp ("Tên mình là An" + "list") vì bỏ 1 cặp vẫn còn > 300.
+
+tiktoken đếm vs `usage.input_tokens`: lệch bao nhiêu, vì sao:
+
+- Lệch 10 → 40 token, và khớp **đúng** công thức `lệch = 10 + 5 × số message cũ` ở cả 6 lượt.
+  Lượt 5–6 sau khi cắt còn 4 message cũ nên lệch quay về 30.
+- Suy ra (chưa có tài liệu xác nhận): mỗi message tốn thêm ~5 token "khung" (đánh dấu role, ranh giới
+  message) mà tiktoken không thấy vì mình chỉ đếm phần `content`. ~10 token cố định còn lại là khung của
+  câu hỏi mới + phần `instructions`.
+- Phần chữ thì tiktoken `o200k_base` có vẻ đếm khớp (lệch tròn theo số message, không lệch lung tung),
+  dù tiktoken không biết `gpt-6-luna` (`encoding_for_model` báo KeyError).
+- Hệ quả: muốn ước lượng sát API thì cộng thêm ~5 token mỗi message. Lệch nhỏ (~10% ở đây), đủ dùng để
+  quyết định cắt, không cần chính xác tuyệt đối.
+
+Bỏ theo cặp, vì sao:
+
+- Lịch sử phải xen kẽ user → assistant. Bỏ lẻ thì lịch sử bắt đầu bằng 1 câu trả lời không có câu hỏi,
+  hoặc 2 câu user đứng liền nhau, model đọc mất mạch. (Chưa thử xem API có báo lỗi không.)
+- Bỏ lẻ còn làm "quên nửa vời": nếu chỉ bỏ câu user "Tên mình là An." mà giữ câu bot
+  "Chào An! Mình sẽ gọi bạn là An nhé." thì bot vẫn biết tên qua câu trả lời → không còn rõ đã cắt
+  cái gì, khó dự đoán bot nhớ gì.
+- Đếm "số lượt bị bỏ" mới có nghĩa khi bỏ trọn cặp.
+
+Sau khi lượt "Tên mình là An" bị cắt, bot có nhớ tên không:
+
+- **Không.** Cặp "Tên mình là An" bị bỏ ở lượt 5 (`/history` lúc đó bắt đầu từ "dict"). Lượt 6 hỏi
+  "Mình tên gì?" → "Mình chưa biết tên bạn — bạn chưa cho mình biết."
+- Đáng chú ý: bot **không biết là nó đã quên**. Nó khẳng định "bạn chưa cho mình biết", trong khi thật ra
+  có nói, chỉ là bị cắt. Sliding window xóa vĩnh viễn (`del history[:2]`), model không có dấu hiệu nào
+  cho thấy từng có lượt cũ.
+- Đây là điểm yếu Bài 5 xử lý: tóm tắt các lượt cũ thay vì bỏ hẳn, để giữ lại thông tin như tên.
 
 ## Bài 5 — Sliding window vs tóm tắt
 
-| Chỉ số                          | Sliding window | Tóm tắt |
-| ------------------------------- | -------------- | ------- |
-| Tổng input token                |                |         |
-| Tổng output token               |                |         |
-| Tổng cost (gồm lời gọi tóm tắt) |                |         |
-| Nhớ tên ở cuối?                 |                |         |
-| Độ trễ cảm nhận                 |                |         |
+_(Claude viết, 2026-10-06, chạy thật `bai5_run` với `gpt-6-luna`, `MAX_HISTORY_TOKENS = 300`,
+`KEEP_LAST_PAIRS = 2`, cùng `SCRIPT` 10 câu: "Tên mình là An." → 8 câu "Giải thích … 4-5 câu" → "Mình tên gì?")_
+
+| Chỉ số                          | Sliding window | Tóm tắt (prompt cũ)                 | Tóm tắt (prompt đã sửa) |
+| ------------------------------- | -------------- | ----------------------------------- | ----------------------- |
+| Tổng input token                | 2,292          | 5,137 (chat 3,207 + tóm tắt 1,930)  | 4,849                   |
+| Tổng output token               | 919            | 2,152 (chat 1,114 + tóm tắt 1,038)  | 2,341                   |
+| Tổng cost (gồm lời gọi tóm tắt) | $0.000689      | $0.001590 (x2.3; tóm tắt chiếm 45%) | $0.001655 (x2.4)        |
+| Số lần gọi tóm tắt              | 0              | 6 (lượt 5 → 10, lượt nào cũng có)   | 6                       |
+| Nhớ tên ở cuối?                 | Không          | **Không**                           | **Có**                  |
+| Độ trễ (cả kịch bản)            | 23.3 s         | 40.4 s (x1.7)                       | 45.4 s (x1.9)           |
+
+- Sliding window: "Mình chưa biết tên bạn vì bạn chưa cho mình biết." — giống Bài 4, bot không biết là mình đã quên.
+- Tóm tắt, prompt cũ: "Mình chưa biết tên bạn." — **cũng quên**, dù đã tốn gấp 2.3 lần tiền.
+- Tóm tắt, prompt đã sửa (thêm câu giữ thông tin từ bản tóm tắt trước): "Bạn tên An." — **nhớ đúng**.
+  Cả 6 bản tóm tắt đều mở đầu "Người dùng tên An; chưa nêu sở thích hay mục tiêu cá nhân. …".
+  Cost gần như không đổi so với prompt cũ (chỉ cột "Tóm tắt (prompt đã sửa)" là chạy lại riêng
+  kịch bản tóm tắt; sliding window không chạy lại).
+
+Vì sao cách tóm tắt cũng quên tên (tóm tắt cuốn chiếu làm rơi thông tin):
+
+- Tóm tắt **lần 1** (lượt 5) vẫn có: "Người dùng tên An. Cuộc hội thoại gồm lời chào và phần giải thích về `list`…"
+- Tóm tắt **lần 2** (lượt 6) mất tên: "Cuộc hội thoại đề cập đến `list` và `dict`…", và từ đó không bản nào có lại.
+- Lần 2, tên chỉ còn nằm trong **bản tóm tắt cũ** (message role `assistant`), không còn câu user nào nói tên.
+  Prompt dặn giữ "thông tin **người dùng nói** về bản thân" → model không coi đó là điều cần giữ.
+- Kiểm chứng: gọi lại đúng tình huống lần 2, mỗi prompt 3 lần:
+  - Prompt hiện tại: **0/3** giữ tên. Cả 3 bản chỉ tóm tắt lượt "dict", bỏ qua luôn bản tóm tắt cũ.
+  - Thêm 1 câu "Nếu đầu vào có bản tóm tắt trước, phải chép lại nguyên văn mọi thông tin về người dùng
+    trong đó.": **3/3** giữ tên ("Người dùng tên An. …").
+- Bài học: mỗi lần tóm tắt là 1 lần có thể **rơi thông tin**, và tóm tắt cuốn chiếu nhân rủi ro đó lên
+  qua từng lần. Prompt tóm tắt phải dặn rõ giữ cả thông tin từ bản tóm tắt trước.
+- Đã sửa `SUMMARY_PROMPT` trong `exercises.py` (thêm câu trên) và chạy lại kịch bản tóm tắt: bot nhớ
+  tên ở lượt 10 (xem cột "prompt đã sửa" ở bảng trên). Mới chạy 1 lần, chưa lặp lại nhiều lần.
+
+Vì sao lượt nào cũng phải tóm tắt (từ lượt 5):
+
+- Sau khi nén, lịch sử = bản tóm tắt (~100 token) + 2 lượt giữ nguyên. Mỗi câu trả lời "4-5 câu" dài
+  ~120–150 token nên 2 lượt đã ~300 token → thêm 1 lượt là vượt ngưỡng, lại phải tóm tắt.
+- Hệ quả: 6 lời gọi tóm tắt chiếm 45% cost và làm cả kịch bản chậm hơn ~17 giây.
+- Ngưỡng phải lớn hơn hẳn phần giữ nguyên thì tóm tắt mới thưa. Ví dụ ngưỡng 2,000 (roadmap gợi ý)
+  hoặc chỉ giữ 1 lượt.
+
+Tóm tắt có tiết kiệm token không? (so thêm với "giữ nguyên toàn bộ lịch sử")
+
+- Chạy thêm cùng `SCRIPT`, không cắt / không tóm tắt (như Bài 3): input 5,821, output 1,066,
+  **$0.001115**, 30.4 s, nhớ tên ("Bạn tên là An.").
+- Với 10 lượt, **tóm tắt đắt nhất** trong 3 cách: input có giảm so với giữ nguyên (4,849 vs 5,821, −17%)
+  nhưng output gấp đôi (2,341 vs 1,066) vì 6 lời gọi tóm tắt cũng sinh output, mà output đắt gấp 5 input.
+- Ước tính theo số lượt (ngoại suy từ số đo trên, chưa chạy thật các mốc dài):
+
+  | Số lượt | Giữ nguyên lịch sử | Tóm tắt  | Rẻ hơn     |
+  | ------- | ------------------ | -------- | ---------- |
+  | 10      | $0.0011            | $0.0017  | giữ nguyên |
+  | 20      | $0.0035            | $0.0039  | giữ nguyên |
+  | 25      | $0.0051            | $0.0050  | hòa vốn    |
+  | 50      | $0.0178            | $0.0107  | tóm tắt    |
+  | 100     | $0.0663            | $0.0220  | tóm tắt    |
+
+- Vì sao: giữ nguyên thì mỗi lượt gửi lại thêm ~122 token → cost mỗi lượt tăng dần (lượt 1 ~56 µ$, lượt 30
+  ~412 µ$), tổng tăng theo bình phương. Tóm tắt thì từ lượt 5 mỗi lượt ~226 µ$, gần như cố định.
+- Kết luận: tóm tắt **không** nhằm rẻ hơn ở hội thoại ngắn. Nó giữ chi phí mỗi lượt **không tăng theo độ
+  dài** hội thoại và không bao giờ tràn context window → chỉ có lợi về tiền khi hội thoại đủ dài.
+  Ngưỡng 300 khiến lượt nào cũng tóm tắt nên điểm hòa vốn đến muộn; ngưỡng 2,000 chưa đo.
+
+Tóm tắt đặt ở đâu, role gì:
+
+- Đặt ở **đầu** lịch sử (thay cho các lượt cũ), trước các lượt giữ nguyên → thứ tự thời gian vẫn đúng.
+- Đang dùng role `assistant`, nội dung mở đầu "Tóm tắt các lượt trước: …": giữ được xen kẽ
+  assistant → user → assistant. Role `system`/`developer` cũng được (SDK cho phép) nhưng sẽ nâng nội dung
+  người dùng nói lên cấp "chỉ thị" → dễ bị prompt injection. Cách khác: nối bản tóm tắt vào `instructions`.
+- Chưa thử so sánh các role với nhau.
 
 Khi nào dùng cách nào:
 
--
+- **Sliding window**: rẻ nhất, nhanh nhất, không gọi thêm LLM. Hợp với chat mà mỗi câu hỏi gần như độc
+  lập (hỏi đáp tra cứu, FAQ), hoặc khi thông tin quan trọng không nằm ở đầu cuộc trò chuyện.
+- **Tóm tắt**: tốn thêm (ở đây x2.3 cost, x1.7 thời gian) để đổi lấy khả năng giữ thông tin cũ (tên, sở
+  thích, quyết định đã chốt). Chỉ đáng khi cuộc trò chuyện dài và thông tin đầu vẫn cần dùng về sau, và
+  phải có prompt tóm tắt tốt + ngưỡng đủ lớn để không tóm tắt mỗi lượt.
+- Thông tin **chắc chắn phải nhớ** (như tên) thì đừng phó mặc cho tóm tắt: tách riêng ra (ví dụ lưu
+  vào 1 biến/`instructions` như "Người dùng tên An") để không bao giờ bị cắt hay tóm tắt rơi mất.
