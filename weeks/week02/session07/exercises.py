@@ -1,7 +1,9 @@
 import json
+from pathlib import Path
 from typing import Literal, TypedDict, cast
 
 import httpx2
+import pandas as pd
 from dotenv import load_dotenv
 from openai import OpenAI
 from openai.types.responses import FunctionToolParam, ResponseInputParam
@@ -242,7 +244,86 @@ class OrderResponse(TypedDict):
 
 
 def query_orders(customer: str | None, status: Status | None) -> OrderResponse:
-    pass
+    orders_path = Path(__file__).parent / "orders.csv"
+    df = pd.read_csv(orders_path)
+
+    orders = df.to_dict(orient="records")
+
+    if customer is not None:
+        orders = [o for o in orders if o["customer"].lower() == customer.lower()]
+    if status is not None:
+        orders = [o for o in orders if o["status"] == status]
+
+    order_count = len(orders)
+    total_amount_vnd = sum(o["quantity"] * o["unit_price"] for o in orders)
+
+    return OrderResponse(orders=orders, order_count=order_count, total_amount_vnd=total_amount_vnd)
+
+
+query_orders_tool: FunctionToolParam = {
+    "type": "function",
+    "name": "query_orders",
+    "description": (
+        "Tra cứu đơn hàng (chỉ đọc), lọc theo tên khách và/hoặc trạng thái. "
+        "Trả về danh sách đơn khớp, số đơn (order_count) và tổng tiền VND (total_amount_vnd)."
+    ),
+    "strict": True,
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "customer": {
+                "type": ["string", "null"],  # null = không lọc theo khách
+                "description": "Tên khách hàng. null = mọi khách.",
+            },
+            "status": {
+                "type": ["string", "null"],  # null = không lọc theo trạng thái
+                "enum": ["delivered", "shipping", "pending", "cancelled", None],  # phải có None
+                "description": "Trạng thái đơn. null = mọi trạng thái.",
+            },
+        },
+        # strict: mọi key phải nằm trong required. "Tùy chọn" = cho phép null ở type,
+        # KHÔNG phải bỏ key khỏi required (~ TS `status: string | null`, không phải `status?:`)
+        "required": ["customer", "status"],
+        "additionalProperties": False,
+    },
+}
+
+TOOLS_REGISTRY = {"get_weather": get_weather, "query_orders": query_orders}
+TOOLS = [get_weather_tool, query_orders_tool]
+MAX_STEPS = 5
+
+
+def run_bai2(user_input: str) -> None:
+    input_list: ResponseInputParam = [{"role": "user", "content": user_input}]
+    for step in range(MAX_STEPS):
+        print(f"[step {step + 1}]")
+        response = client.responses.create(
+            model=MODEL,
+            input=input_list,
+            tools=TOOLS,
+        )
+        calls = [item for item in response.output if item.type == "function_call"]
+        if not calls:
+            print(response.output_text)
+            return
+        input_list += cast(ResponseInputParam, response.output)
+        for call in calls:
+            args = json.loads(call.arguments)
+            result = TOOLS_REGISTRY[call.name](**args)
+            input_list.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call.call_id,
+                    "output": json.dumps(
+                        result,
+                        ensure_ascii=False,
+                    ),
+                }
+            )
+            print(f"→ {call.name}({args})")
+            print(f"← {str(result)[:150]}")  # chỉ cắt khi in, LLM vẫn nhận đủ
+
+    print("\n Đã vượt quá MAX_STEPS, dừng vòng lặp.")
 
 
 # ============================================================================
@@ -313,4 +394,8 @@ def query_orders(customer: str | None, status: Status | None) -> OrderResponse:
 
 
 if __name__ == "__main__":
-    run_bai1()
+    # run_bai1()
+
+    run_bai2("An đã đặt bao nhiêu đơn, tổng bao nhiêu tiền?")
+    run_bai2("Có đơn nào đang pending không?")
+    run_bai2("Đơn nào bị huỷ, và trời Đà Nẵng giờ thế nào?")
