@@ -220,7 +220,29 @@ def run_bai1() -> None:
 #
 # Câu hỏi ghi notes.md: tổng tiền nên để tool tính sẵn hay để LLM tự cộng từ danh sách đơn? Vì sao?
 
+
 # TODO: viết code ở đây
+Status = Literal["delivered", "shipping", "pending", "cancelled"]
+
+
+class OrderItem(TypedDict):
+    order_id: int
+    customer: str
+    product: str
+    quantity: int
+    unit_price: int
+    status: Status
+    created_at: str
+
+
+class OrderResponse(TypedDict):
+    orders: list[OrderItem]
+    order_count: int
+    total_amount_vnd: int
+
+
+def query_orders(customer: str | None, status: Status | None) -> OrderResponse:
+    pass
 
 
 # ============================================================================
