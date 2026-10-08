@@ -145,15 +145,75 @@ Các lỗi gặp khi khai báo tool:
 
 ## Bài 2 — Vòng lặp tổng quát + query CSV
 
+_(Claude viết, 2026-10-07, chạy thật `run_bai2` với `gpt-6-luna`, `MAX_STEPS = 5`)_
+
 Log các câu thử (tool nào được gọi, args gì, mấy bước):
 
-| Câu hỏi | Tool + args | Số bước | Đúng không |
-| ------- | ----------- | ------- | ---------- |
-|         |             |         |            |
+| Câu hỏi                                          | Tool + args                                                                      | Số bước (lời gọi LLM) | Đúng không                                       |
+| ------------------------------------------------ | -------------------------------------------------------------------------------- | --------------------- | ------------------------------------------------ |
+| "An đã đặt bao nhiêu đơn, tổng bao nhiêu tiền?"  | `query_orders(customer="An", status=None)`                                       | 2                     | ✅ 5 đơn, 277.000đ (khớp cộng tay từ CSV)        |
+| "Có đơn nào đang pending không?"                 | `query_orders(customer=None, status="pending")`                                  | 2                     | ✅ 3 đơn (1009, 1011, 1015), 134.000đ            |
+| "Đơn nào bị huỷ, và trời Đà Nẵng giờ thế nào?"   | `query_orders(None, "cancelled")` + `get_weather("Đà Nẵng")` **cùng step 1**     | 2                     | ✅ 1004 + 1012 = 64.000đ; Đà Nẵng 24,8°C mưa phùn |
+
+- Mọi câu đều 2 bước: step 1 gọi tool, step 2 trả lời. Câu 3 cần 2 tool nhưng model gọi **song song
+  trong cùng 1 response**, không tốn thêm bước.
+- LLM gửi `null` đúng chỗ ("không lọc") nhờ `None` trong `enum` + description "null = mọi ...".
 
 Tổng tiền: để tool tính hay để LLM cộng, vì sao:
 
--
+- Tool tính sẵn (`total_amount_vnd`) và description nói rõ có field đó → LLM dùng luôn, 3/3 câu đúng số.
+- LLM đoán token chứ không tính toán, cộng nhiều số dễ sai. Phép tính chắc chắn phải đúng thì để code làm
+  (giống ý "offload burden" trong Best practices của docs, và đổi mã WMO sang chữ ở Bài 1).
+
+Tool `query_orders`:
+
+- Đọc CSV bằng `pandas` (`uv add pandas`, đề gợi ý module `csv`). `to_dict(orient="records")` trả `int`
+  Python thường nên `json.dumps` được. `TypedDict` không kiểm gì lúc chạy: ô trống trong CSV sẽ thành `NaN`
+  (chưa thử).
+- Đường dẫn file: `Path(__file__).parent / "orders.csv"` (~ `__dirname`). Đường dẫn tương đối tính từ thư
+  mục đang chạy lệnh, không phải thư mục file `.py`.
+- Bẫy truthiness: `if customer:` → `query_orders("", None)` trả **cả 15 đơn** (`""` falsy nên bỏ qua lọc).
+  Đổi thành `if customer is not None:` → 0 đơn (đúng: không khách nào tên rỗng). `None` = "không lọc",
+  KHÁC `""`.
+- Lỡ sửa thành `if customer is None: return None` → `query_orders(None, "pending")` ra `None`, hỏng câu
+  "Có đơn nào pending". `None` ở đây nghĩa là "không lọc", không phải "không có dữ liệu".
+- Không phân biệt hoa thường: `.lower()` 2 phía → `"an"` khớp `"An"`.
+
+Tool dict với tham số có thể null (strict mode):
+
+- `"type": ["string", "null"]` và **vẫn phải** nằm trong `required`. Strict = mọi key đều bắt buộc;
+  "tùy chọn" là cho phép giá trị null (~ TS `status: string | null`, không phải `status?: string`).
+- Có `enum` thì phải thêm `None` vào `enum`. Đã thử với API thật, câu "Khách An có bao nhiêu đơn?":
+
+  | `enum` của `status`  | LLM gửi                                   |
+  | -------------------- | ----------------------------------------- |
+  | có `None`            | `{"customer":"An","status":null}` ✅      |
+  | không có `None`      | `{"customer":"An","status":"delivered"}` ❌ |
+
+  Thiếu `None` thì strict ép LLM chọn 1 trạng thái → chỉ đếm 3/5 đơn của An, **API không báo lỗi**.
+- Description không nói tên file (`orders.csv`): LLM không cần biết, lộ chi tiết nội bộ (mục bảo mật Bài 4).
+  Nói tool trả về gì (`order_count`, `total_amount_vnd`) để LLM khỏi tự cộng.
+
+Vòng lặp `run_bai2`:
+
+- Registry `TOOLS_REGISTRY[call.name](**args)` thay cho if/else theo tên (~ map handler bên Express).
+  Tên tool gõ ở 2 nơi (key registry và `"name"` trong tool dict) → lệch là `KeyError` (Bài 4b).
+- Mọi lần gọi đều truyền `tools=TOOLS` (đã chứng minh ở Bài 1: thiếu thì model không gọi thêm được).
+- **Bug đã gặp:** để `input_list += response.output` **trong** vòng `for call` → câu 3 (2 call cùng
+  lượt) thêm output 2 lần → **400** `Duplicate item found with id fc_... Remove duplicate items from your
+  input`. Câu chỉ gọi 1 tool thì không lộ lỗi. Sửa: `+=` 1 lần trước vòng `for call`, còn
+  `function_call_output` thì mỗi call 1 cái (append trong vòng).
+
+`MAX_STEPS` để làm gì:
+
+- `step` tăng 1 mỗi **lần gọi LLM**, không phải mỗi lần chạy tool (câu 3: 2 tool vẫn chỉ 1 step).
+  → `MAX_STEPS` giới hạn số lời gọi LLM = tiền + thời gian.
+- Cần vì **LLM quyết định khi nào dừng**: vòng lặp chỉ thoát khi LLM trả lời mà không gọi tool. LLM có thể
+  không chịu dừng: tool lỗi liên tục, kết quả không như ý nên đổi tham số thử mãi, hoặc bị prompt injection.
+- Hiện tại tool lỗi (vd 503) làm chương trình **sập** luôn, chưa lặp → `MAX_STEPS` chưa có tác dụng. Sau
+  Bài 4a (bắt lỗi, gửi `{"error": ...}` cho LLM) mới có thể lặp và `MAX_STEPS` mới chặn (Bài 4d).
+- Chạm giới hạn thì user chưa nhận được câu trả lời nào → Bài 4d: nên báo user thế nào.
+- ~ `maxRetries` khi retry API, hoặc giới hạn ~20 redirect của `fetch`.
 
 ## Bài 3 — Parallel tool calls
 
