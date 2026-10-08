@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 from typing import Literal, TypedDict, cast
 
@@ -160,8 +161,8 @@ get_weather_tool: FunctionToolParam = {
 }
 
 
-def run_bai1() -> None:
-    input_list: ResponseInputParam = [{"role": "user", "content": "Hà Nội bây giờ bao nhiêu độ?"}]
+def run_bai1(user_prompt: str) -> None:
+    input_list: ResponseInputParam = [{"role": "user", "content": user_prompt}]
     response = client.responses.create(
         model=MODEL,
         input=input_list,
@@ -344,6 +345,52 @@ def run_bai2(user_input: str) -> None:
 # TODO: viết code ở đây
 
 
+def run_bai3() -> None:
+    input_list: ResponseInputParam = [
+        {"role": "user", "content": "So sánh nhiệt độ Hà Nội, Đà Nẵng và TP.HCM bây giờ"}
+    ]
+    response = client.responses.create(model=MODEL, input=input_list, tools=[get_weather_tool])
+    calls = [item for item in response.output if item.type == "function_call"]
+
+    # Quan sát: 1 response trả về mấy function_call, mỗi cái call_id riêng
+    print(f"Số function_call: {len(calls)}")
+    for call in calls:
+        print(f"- {call.name} | {call.call_id} | {call.arguments}")
+    if response.usage is not None:
+        print(
+            f"input_tokens={response.usage.input_tokens}, "
+            f"output_tokens={response.usage.output_tokens}"
+        )
+
+    if not calls:
+        print(response.output_text)
+        return
+    input_list += cast(ResponseInputParam, response.output)
+
+    # Chỉ đo phần chạy tool (không tính 2 lời gọi LLM) để so tuần tự vs song song
+    start = time.perf_counter()
+    for call in calls:
+        args = json.loads(call.arguments)
+        result = get_weather(**args)
+        input_list.append(
+            {
+                "type": "function_call_output",
+                "call_id": call.call_id,
+                "output": json.dumps(
+                    result,
+                    ensure_ascii=False,
+                ),
+            }
+        )
+    elapsed = time.perf_counter() - start
+    print(f"Tool tuần tự: {elapsed * 1000:.0f} ms")
+
+    final = client.responses.create(
+        model=MODEL, input=input_list, instructions="Hãy trả lời ngắn gọn, dựa trên thông tin đã có"
+    )
+    print("\nRESPONSE: ", final.output_text)
+
+
 # ============================================================================
 # Bài 4 — Xử lý lỗi: tool hỏng, tool không tồn tại, args sai
 # ============================================================================
@@ -394,8 +441,10 @@ def run_bai2(user_input: str) -> None:
 
 
 if __name__ == "__main__":
-    # run_bai1()
+    # run_bai1("Hà Nội bây giờ bao nhiêu độ?")
 
-    run_bai2("An đã đặt bao nhiêu đơn, tổng bao nhiêu tiền?")
-    run_bai2("Có đơn nào đang pending không?")
-    run_bai2("Đơn nào bị huỷ, và trời Đà Nẵng giờ thế nào?")
+    # run_bai2("An đã đặt bao nhiêu đơn, tổng bao nhiêu tiền?")
+    # run_bai2("Có đơn nào đang pending không?")
+    # run_bai2("Đơn nào bị huỷ, và trời Đà Nẵng giờ thế nào?")
+
+    run_bai3()
