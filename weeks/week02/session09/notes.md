@@ -106,18 +106,47 @@ Usage / cost có từ lúc nào trong stream, vì sao: _(Claude ghi)_
 
 | Tình huống                                   | Mã HTTP | Client thấy gì (curl -N) | Terminal in gì |
 | -------------------------------------------- | ------- | ------------------------ | -------------- |
-| MODEL sai (lỗi **trước** delta đầu)          |         |                          |                |
-| raise sau delta thứ 5, chưa bắt              |         |                          |                |
-| raise sau delta thứ 5, bắt → `event: error`  |         |                          |                |
-| Ctrl+C giữa chừng                            | —       | —                        |                |
+| MODEL sai (lỗi **trước** delta đầu)          | **200** | header SSE rồi `curl: (18) transfer closed with outstanding read data remaining`, 0 event | traceback `NotFoundError` (chưa dán log) |
+| raise sau delta thứ 3, chưa bắt              | **200** | 3 delta (`Xin`, ` ch`, `ào`) rồi `curl: (18) transfer closed…`, không có `done` → client thấy câu cụt, không biết lỗi | traceback `RuntimeError` (chưa dán log) |
+| raise sau delta thứ 3, bắt → `event: error`  |         |                          |                |
+| MODEL sai, **có** try/except                 | **200** | 0 delta, `event: error` + `data: {"message": "Có lỗi…"}`, curl kết thúc bình thường (exit 0, không `(18)`) | `[stream error] NotFoundError …` (chưa dán log) |
+| Ctrl+C giữa chừng                            | —       | —                        | `[stream cancelled] sau 80 delta` rồi `[stream closed] đã gửi 80 delta` → generator nhận `CancelledError`, dừng ngay |
 
-Lỗi trước khi stream bắt đầu vs lỗi giữa stream, xử lý khác nhau thế nào:
+Lỗi trước khi stream bắt đầu vs lỗi giữa stream, xử lý khác nhau thế nào: _(Claude ghi)_
 
--
+- `StreamingResponse` gửi 200 + header **trước** khi chạy generator → mọi lỗi trong generator (kể cả
+  `create()` lỗi ngay, MODEL sai) đều đã là 200. Không bắt → server cắt kết nối, curl `(18)`, client chỉ
+  thấy câu cụt / rỗng, không biết lỗi.
+- Giữa stream: chỉ còn cách bắt lỗi trong generator → log chi tiết (`type(e).__name__`) → gửi
+  `event: error` với câu cố định (không `str(e)`) → kết thúc stream sạch (curl exit 0).
+- Muốn lỗi **trước** delta đầu vẫn trả 502 đúng nghĩa: `await responses.create(...)` trong route, bọc
+  try/except → `HTTPException(502)`, rồi mới `return StreamingResponse(...)` (tuỳ chọn, chưa làm).
 
-Client ngắt thì server có dừng gọi OpenAI không, vì sao quan trọng:
+Client ngắt thì server có dừng gọi OpenAI không, vì sao quan trọng: _(Claude ghi)_
 
--
+- Có: Starlette 1.7.0 nghe `http.disconnect` rồi cancel task stream (`starlette/responses.py:267-282`)
+  → generator nhận `CancelledError` ngay ở `await` đang chờ → log `cancelled` + `closed` (80 delta).
+  Vòng `async for` qua stream OpenAI dừng.
+- Nhưng `AsyncStream.close()` chỉ **tự gọi khi đọc hết** (docstring `openai/_streaming.py:245-249`) → bị
+  cancel giữa chừng thì kết nối tới OpenAI không được đóng chủ động. Sửa: `async with stream:` quanh vòng
+  `async for` (SDK có `__aenter__/__aexit__`, `_streaming.py:234-237`).
+- Chưa kiểm: OpenAI có ngừng tính token ngay khi kết nối đóng không (xem usage dashboard nếu cần).
+- Quan trọng: không dừng = vẫn trả tiền token không ai đọc + giữ kết nối/tài nguyên server.
+- `except CancelledError` phải `raise` lại (không nuốt tín hiệu dừng); `finally` luôn chạy → chỗ dọn dẹp.
+  Biến dùng trong `finally` (`count`) phải gán **trước** `try` (pyright: possibly unbound).
+
+Lỗi gặp: câu dài không có `done` (stream im lặng kết thúc) _(Claude ghi, 2026-10-11)_
+
+- "Viết bài 500 chữ về lịch sử Hà Nội" + `max_output_tokens=300`: qua server có lần **0 event**, có lần
+  nhiều delta rồi dừng, không bao giờ có `done`.
+- Gọi thẳng SDK đếm event: kết thúc bằng `response.incomplete`
+  (`incomplete_details.reason='max_output_tokens'`), **không** có `response.completed`.
+  `usage`: output 300, trong đó `reasoning_tokens=179`.
+- `gpt-6-luna` là model reasoning: token "nghĩ" tính vào `max_output_tokens` → số token còn cho chữ
+  thay đổi mỗi lần (116 delta / 0 delta).
+- Sửa: xử lý cả `response.completed` và `response.incomplete` (đều có `.response.usage`), thêm
+  `"incomplete": true/false` vào `done`; tăng `max_output_tokens` nếu cần câu dài. Bài học Buổi 4 lặp lại:
+  liệt kê **mọi** event kết thúc của SDK, không chỉ đường đi đẹp.
 
 ## Bài 4 — Next.js đọc stream
 
