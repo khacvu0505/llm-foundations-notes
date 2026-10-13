@@ -16,15 +16,21 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
 
   const handleReset = () => {
-    setInput("")
     setAnswer("")
     setUsage(null)
     setError(null)
   }
 
-  function handleSend(e: React.FormEvent<HTMLFormElement>) {
+  function handleSend(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault()
+    const message = input.trim()
+    if (!message) return
+
     handleReset()
+    setLoading(true)
+    console.log(message)
+    setLoading(false)
+
   }
 
   return (
