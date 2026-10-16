@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 type Usage = {
   input_tokens: number | null;
@@ -14,6 +14,7 @@ export default function Home() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const handleReset = () => {
     setAnswer("");
@@ -21,7 +22,39 @@ export default function Home() {
     setError(null);
   };
 
-  function handleEvent(raw: string) {}
+  function handleEvent(raw: string) {
+    const lines = raw.split("\n");
+    let eventName = "";
+    let data = "";
+    for (const line of lines) {
+      if (line.startsWith("event:")) {
+        eventName = line.slice(6).trim();
+      } else if (line.startsWith("data:")) {
+        data = line.slice(5).trim();
+      }
+    }
+
+    if (!data) return;
+    const parsed = JSON.parse(data)
+
+    switch (eventName) {
+      case "delta":
+        setAnswer(prev => prev + parsed.content);
+        break;
+
+      case "done":
+        setUsage(parsed)
+        break;
+
+      case "error":
+        setError(parsed.message);
+        break;
+
+      default:
+        console.warn("event lạ:", eventName)
+        break;
+    }
+  }
 
   async function handleSend(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -29,6 +62,12 @@ export default function Home() {
     if (!message) return;
     setLoading(true);
     handleReset();
+
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const signal = controller.signal;
+
     try {
       const res = await fetch("http://127.0.0.1:8000/chat/stream", {
         headers: {
@@ -37,6 +76,7 @@ export default function Home() {
         },
         method: "POST",
         body: JSON.stringify({ message }),
+        signal,
       });
       if (res.ok) {
         if (!res.body) {
@@ -47,22 +87,30 @@ export default function Home() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
 
+        let buffer = "";
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
-          console.log(JSON.stringify(chunk));
-          setAnswer((prev) => prev + chunk);
+          buffer += chunk;
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() ?? "";
+          for (const part of parts) {
+            handleEvent(part);
+          }
         }
       } else {
         setError(`${res.status}: ${res.statusText}`);
       }
     } catch (error) {
-      if (error instanceof Error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        setError("Đã dừng");
+      } else if (error instanceof Error) {
         setError(error.message);
       }
     } finally {
       setLoading(false);
+      abortRef.current = null
     }
   }
 
@@ -83,7 +131,7 @@ export default function Home() {
           Gửi
         </button>
         {loading && (
-          <button type="button" className="rounded border px-4 py-2">
+          <button type="button" className="rounded border px-4 py-2" onClick={() => abortRef.current?.abort()}>
             Dừng
           </button>
         )}

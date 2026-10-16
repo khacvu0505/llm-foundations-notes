@@ -152,44 +152,136 @@ Lỗi gặp: câu dài không có `done` (stream im lặng kết thúc) _(Claude
 
 | Thử                                         | Quan sát |
 | ------------------------------------------- | -------- |
-| Chữ hiện dần trên trang                     |          |
-| DevTools → Network → `/chat/stream`         |          |
-| Preflight `OPTIONS` có xuất hiện không       |          |
-| Lỗi Bài 1a (1 `\n`) với client này          |          |
-| Nút Dừng (AbortController) → log server     |          |
+| Chữ hiện dần trên trang                     | Có (tự thử trên UI): chữ chảy dần, cuối hiện Tokens/Cost. Đo lại bằng Node `fetch` cùng logic, câu "Giải thích transformer trong 5 câu": chunk đầu 1.8s, xong 3.5s, 120 event |
+| DevTools → Network → `/chat/stream`         | Chrome tự nhận `text/event-stream` → có tab **EventStream** dù dùng `fetch` (không phải `EventSource`). Cột **Type** = giá trị dòng `event:` (`delta`), **Data** = JSON `{"content": …}`, cột **Id** trống vì server không gửi `id:`. Delta cắt giữa chữ: `" ng"` + `"ôn"` + `" ng"` + `"ữ"` (giống Bài 2). Cả stream 2.3 kB. Danh sách chỉ có 1 request `stream`, không thấy `OPTIONS` (giả thuyết: preflight đã được cache nhờ `max-age: 600`, chưa kiểm) |
+| Preflight `OPTIONS` có xuất hiện không       | Có: header `x-api-key` + `Content-Type: application/json` không "simple" → trình duyệt gửi `OPTIONS` trước. Giả lập bằng curl: `200`, `access-control-allow-origin: http://localhost:3000`, `allow-headers` có `x-api-key`, `max-age: 600` (cache preflight 10 phút → các lần Gửi sau có thể không thấy `OPTIONS`) |
+| Lỗi Bài 1a (1 `\n`) với client này          | Mô phỏng logic `page.tsx` (chưa sửa backend thật): `split("\n\n")` không tách được → `handleEvent` gọi **0 lần**, buffer phình dần tới hết stream rồi bị bỏ → trang trắng, không có Tokens/Cost, không báo lỗi |
+| Nút Dừng (AbortController) → log server     | Có, giống Bài 3B: `[stream cancelled] sau 17 delta` rồi `[stream closed] đã gửi 17 delta`. Mô phỏng bằng Node `fetch` cùng logic `page.tsx`, gọi server riêng `:8001`, abort sau delta thứ 10 (xem ghi chú dưới) |
 
-Vì sao không dùng `EventSource`:
+Nút Dừng — đo bằng Node `fetch` (v24) + `AbortController`, câu "Giải thích transformer trong 5 câu": _(Claude ghi, 2026-10-16)_
 
--
+- Server **dừng thật**: abort → kết nối đóng → Starlette cancel generator → `CancelledError` → log `cancelled` + `closed`
+  (cùng đường đi với Ctrl+C curl ở Bài 3B). Vòng `async for` qua stream OpenAI dừng theo.
+- Client nhận 10 delta, server log đã gửi **17**: 7 delta đã ghi ra socket trước khi server biết client đi
+  (còn nằm trên đường mạng / buffer) → client không bao giờ đọc. Server phát hiện ngắt **trễ** hơn lúc bấm Dừng một chút.
+- Lỗi ném ra ở `reader.read()`, **không** ở `fetch`: `name=AbortError`, `message="This operation was aborted"` (thông
+  điệp của Node; Chrome viết khác, chưa kiểm) → so `name`, không so `message`.
+- Abort 50ms sau khi gửi: header 200 đã về sau 27ms (`StreamingResponse` gửi header trước khi gọi OpenAI) → vẫn lỗi ở
+  `reader.read()`, server log `cancelled sau 0 delta`. Với backend này gần như không có lúc nào abort rơi vào `fetch`.
+- Chữ đã nhận được giữ lại (`"Transformer là kiến trúc mạng nơ-ron"`) vì `catch` không `setAnswer("")`.
+- Dùng lại controller đã abort cho fetch sau → bị huỷ **ngay**, request không tới server (log không có dòng nào)
+  → mỗi lần Gửi phải `new AbortController()`.
+- Chưa kiểm trên trình duyệt thật: DevTools Network hiện trạng thái gì (`(canceled)`?), message lỗi của Chrome.
 
-Vì sao phải tự tách event bằng buffer (so với `res.json()`):
+Vì sao không dùng `EventSource`: _(Claude ghi)_
 
--
+- Constructor `new EventSource(url, options)` chỉ có 1 option là `withCredentials` (MDN "EventSource() constructor")
+  → luôn là **GET**, không gửi body, không đặt header tuỳ ý.
+- Bài này cần `POST` + body JSON (`message`) + header `X-API-Key` → `EventSource` không làm được, phải dùng
+  `fetch` + `res.body.getReader()` và tự parse SSE.
+- Đổi lại mất các thứ `EventSource` làm sẵn: tự tách event, tự kết nối lại (`retry:`), `Last-Event-ID`.
+
+Vì sao phải tự tách event bằng buffer (so với `res.json()`): _(Claude ghi)_
+
+- `res.json()` đợi **hết** body rồi parse 1 lần → mất hiệu ứng chảy chữ. Stream thì đọc từng `read()`.
+- 1 lần `read()` là 1 mảnh byte mạng, **không** khớp ranh giới event. Đo thật (Node `fetch`): 113 chunk / 120 event,
+  có 1 chunk chứa **8 event dính nhau**. Lần đo này không gặp chunk cắt giữa event, nhưng TCP/proxy không
+  đảm bảo → vẫn phải xử lý.
+- Cách làm: `buffer += chunk` → `split("\n\n")` → `parts.pop()` giữ lại phần cuối (có thể là nửa event)
+  → `handleEvent` từng phần đủ. Đã kiểm 3 kiểu chunk (1 event / nhiều event dính / cắt giữa JSON) đều ra đúng.
+- `decoder.decode(value, { stream: true })`: chữ tiếng Việt UTF-8 nhiều byte có thể bị cắt giữa 2 chunk,
+  `stream: true` giữ byte dở chờ chunk sau (giống lý do cần buffer, nhưng ở tầng byte).
 
 ## Bài 5 — Test + SSE vs WebSocket
 
-Test (`uv run pytest weeks/week02/session09`):
+Test (`uv run pytest weeks/week02/session09`): **4 passed** _(Claude viết + ghi, 2026-10-16)_
 
--
+- `test_health`: khung test chạy được, `from exercises import app` import đúng file session09.
+- `test_stream_fake`: `content-type` là `text/event-stream; charset=utf-8` (Starlette tự thêm charset → so
+  `startswith`, không `==`). Body split `"\n\n"` ra 5 phần, cuối là `""`. Token `"chào\nbạn"` nằm trong body dạng
+  `\\n` (2 ký tự) nhờ `json.dumps` → event không vỡ.
+- `test_chat_stream_missing_api_key`: **401 JSON thường**, không phải stream → `Depends(verify_api_key)` chạy
+  **trước** khi tạo `StreamingResponse`. Muốn trả đúng mã lỗi (auth, validate) thì kiểm tra trước stream.
+- `test_chat_stream_with_fake_openai`: `app.dependency_overrides[get_openai_client]` thay client thật bằng client giả
+  (`create` async + `async with` + `async for`) → không tốn token, kết quả cố định. Kiểm: endpoint gọi đúng
+  `input` / `model` / `stream=True`, event lạ bị bỏ qua, thứ tự `delta, delta, done`, cost dùng `pytest.approx`.
+  Nhớ `dependency_overrides.clear()` trong `finally`.
+- Chưa test: lỗi giữa stream (client giả ném `openai.APIError` → phải có `event: error`).
+
+So sánh 3 cách server đẩy dữ liệu xuống trình duyệt: _(Claude ghi, 2026-10-16 — nguồn ở dưới bảng)_
 
 | Tiêu chí                     | SSE | WebSocket | Long polling |
 | ---------------------------- | --- | --------- | ------------ |
-| Chiều dữ liệu                |     |           |              |
-| Giao thức                    |     |           |              |
-| Tự kết nối lại               |     |           |              |
-| Gửi header (auth) khi mở     |     |           |              |
-| Qua proxy / CDN / load balancer |  |           |              |
-| Độ phức tạp server           |     |           |              |
-| Hợp với                      |     |           |              |
+| Chiều dữ liệu                | Một chiều server → client. Client muốn gửi thì mở request mới | Hai chiều trên cùng 1 kết nối, gửi lúc nào cũng được | Server → client, trả 1 lần rồi đóng; client gửi lên bằng request mới |
+| Giao thức                    | HTTP thường (200 + `text/event-stream`, response không đóng) | Bắt đầu bằng HTTP (`Upgrade: websocket`) → server trả `101 Switching Protocols` → từ đó là giao thức WebSocket, không còn HTTP. URL `ws://` / `wss://` | HTTP thường, mỗi lượt 1 request/response |
+| Tự kết nối lại               | Có nếu dùng `EventSource` (field `retry:`, gửi lại `Last-Event-ID`). Dùng `fetch` như bài này → **mất**, phải tự viết | Không có sẵn → tự viết | Vốn là vòng lặp client tự gửi lại → lỗi thì tự retry |
+| Gửi header (auth) khi mở     | `EventSource`: **không** (chỉ có `withCredentials`). `fetch`: được → lý do bài này dùng `fetch` | **Không**: `new WebSocket(url, protocols)` không có chỗ cho header → thường gửi token qua query / cookie / message đầu | Được (là `fetch` thường) |
+| Qua proxy / CDN / load balancer | Là HTTP nên đi qua được, **nhưng** proxy có thể buffer làm mất chảy chữ (nginx `proxy_buffering` mặc định `on` → tắt bằng header `X-Accel-Buffering: no`) | Proxy phải hỗ trợ Upgrade: nginx cần tự chuyển header `Upgrade` / `Connection` (hop-by-hop, không tự đi qua) | Đi qua dễ nhất, chỉ lo request bị giữ lâu chạm timeout |
+| Độ phức tạp server           | Thấp: 1 generator + `StreamingResponse` (Bài 1 ~15 dòng) | Cao hơn: giữ trạng thái từng kết nối, nhận + gửi 2 chiều, ping để giữ kết nối, scale nhiều server khó hơn _(suy luận)_ | Trung bình: giữ request chờ dữ liệu, không mất tin giữa 2 lần client hỏi lại _(suy luận)_ |
+| Hợp với                      | Server đẩy liên tục, client ít gửi: stream token LLM, thông báo, feed | Hai bên gửi liên tục, độ trễ thấp: chat nhiều người, game, sửa tài liệu chung | Cập nhật thưa / môi trường không dùng được 2 cách kia (phương án dự phòng) |
 
-Key ở frontend (`NEXT_PUBLIC_`) lộ thế nào, cách đúng cho Project #1:
+Ghi thêm:
 
--
+- SSE qua HTTP/1.1 bị giới hạn **6 kết nối / trình duyệt + domain**, tính chung mọi tab (MDN) → mở nhiều tab chat
+  dễ chạm trần. HTTP/2 không bị giới hạn kiểu này.
+- Timeout proxy: nginx mặc định đóng kết nối proxy im lặng quá **60s** (`proxy_read_timeout`, docs WebSocket
+  proxying). Áp dụng cho cả SSE: model nghĩ lâu không gửi gì có thể bị cắt _(suy luận, chưa thử)_.
+- Nguồn: MDN "Using server-sent events" (retry, Last-Event-ID, giới hạn 6, "one-way connection"); MDN
+  "WebSocket() constructor" (chỉ có `url`, `protocols`); MDN "Protocol upgrade mechanism" (`Upgrade`, `101`);
+  nginx `ngx_http_proxy_module` (`proxy_buffering`, `X-Accel-Buffering`); nginx "WebSocket proxying".
+
+Key ở frontend (`NEXT_PUBLIC_`) lộ thế nào, cách đúng cho Project #1: _(Claude ghi, 2026-10-16)_
+
+- Docs Next.js 16.4 (`node_modules/next/dist/docs/01-app/02-guides/environment-variables.md`): biến
+  `NEXT_PUBLIC_` được **inline lúc build** vào JS gửi xuống trình duyệt (thay `process.env.X` bằng giá trị cứng).
+  → Ai mở trang cũng đọc được key: tab Sources (trong file JS) hoặc Network → request `/chat/stream` → header
+  `X-API-Key`. Chưa tự kiểm trên bundle (lúc ghi, server `:3000` đã tắt).
+- Biến **không** có `NEXT_PUBLIC_` chỉ có ở server ("By default, environment variables are only available on the server").
+- Cách đúng: Route Handler `app/api/chat/route.ts` (chạy ở server Next.js, docs `15-route-handlers.md`)
+  gọi FastAPI kèm key, rồi trả `new Response(stream)` chuyển tiếp stream về trình duyệt (docs `route.md` mục
+  Streaming). Đường đi:
+  `Trình duyệt → /api/chat (Next server, giữ APP_API_KEY) → FastAPI (giữ OPENAI_API_KEY) → OpenAI`.
+  Trình duyệt chỉ gọi cùng domain, **không** thấy key nào; hết luôn preflight CORS (cùng origin).
+  Buổi 10–11 làm thật.
 
 ## Câu phỏng vấn liên quan (tự trả lời sau buổi, 3–5 dòng)
 
+_(Claude viết nháp, 2026-10-16, gom từ Bài 1–5 — đọc lại và viết bằng lời mình trước khi đi phỏng vấn)_
+
 ### 1. Vì sao chat LLM dùng SSE thay vì WebSocket? (exit criteria Phase 01)
+
+- Chat LLM chủ yếu là **server đẩy một chiều**: client gửi 1 câu hỏi, server trả nhiều token. SSE đúng hình dạng đó;
+  câu hỏi tiếp theo chỉ cần 1 request mới, không cần kênh 2 chiều.
+- SSE là **HTTP thường**: dùng lại auth bằng header, CORS, log, load balancer, `fetch` sẵn có. Server chỉ là 1
+  generator + `StreamingResponse`. WebSocket phải nâng cấp giao thức (`101`), giữ trạng thái kết nối, proxy phải
+  hỗ trợ Upgrade, và trình duyệt không gắn header auth được.
+- Đánh đổi: proxy có thể buffer SSE (tắt bằng `X-Accel-Buffering: no`), giới hạn 6 kết nối trên HTTP/1.1.
+  Chỉ cần WebSocket khi hai bên gửi liên tục (voice realtime, nhiều người cùng chat).
 
 ### 2. Tool call / OpenAI fail giữa stream thì xử lý sao? (exit criteria Phase 01)
 
+- `StreamingResponse` gửi **200 + header trước** khi chạy generator → lỗi giữa stream không đổi sang 502 được nữa.
+  Không bắt thì kết nối bị cắt, client chỉ thấy câu cụt (curl `(18)`).
+- Cách xử lý: `try/except` **trong generator** → log chi tiết ra server (`type(e).__name__`, model) → gửi
+  `event: error` với câu gọn (không lộ `str(e)`) → kết thúc stream sạch. Client bắt event `error` để hiện lỗi,
+  giữ phần chữ đã nhận.
+- Lỗi kiểm được **trước** stream (auth, validate body, có thể cả `responses.create`) thì đặt trước
+  `StreamingResponse` → vẫn trả 401 / 422 / 502 đúng nghĩa (test 401 ở Bài 5).
+- Client ngắt (nút Dừng / Ctrl+C) → generator nhận `CancelledError` → log rồi `raise` lại, `finally` dọn dẹp,
+  `async with stream` đóng kết nối tới OpenAI → không tốn token cho câu trả lời không ai đọc.
+- Tool call lỗi: chưa làm thật (Buổi 10–11). Hướng dự kiến: cùng khung trên, lỗi tool cũng thành `event: error`
+  hoặc trả lỗi về cho model như kết quả tool _(chưa kiểm)_.
+
 ### 3. Stream từ LLM tới trình duyệt đi qua những bước nào, chỗ nào có thể bị buffer làm mất hiệu ứng "chảy chữ"?
+
+Đường đi: OpenAI → SDK `AsyncOpenAI` (`async for event`) → generator `chat_events` (`yield` SSE) →
+Starlette `StreamingResponse` → (proxy / CDN nếu có) → TCP → `fetch` `reader.read()` → `TextDecoder` →
+buffer `split("\n\n")` → `handleEvent` → React state.
+
+| Chỗ có thể buffer                 | Đã gặp thật?                                        |
+| --------------------------------- | --------------------------------------------------- |
+| `print` thiếu `flush=True`        | Có — Buổi 4 (in ra terminal, không qua web): chữ đợi `"\n"` mới hiện |
+| Client đợi hết body               | Có — curl không `-N` thấy cả cục ở cuối; `res.json()` cũng vậy |
+| Proxy (nginx `proxy_buffering on`)| Chưa — giả thuyết, sửa bằng `X-Accel-Buffering: no` |
+| Code sync chặn event loop         | Generator `def` + `time.sleep` (Bài 1c) **không** chặn: Starlette chạy nó trong threadpool. Nhưng code sync **trong** `async def` thì chặn (Buổi 8) → mọi stream khác cùng đứng |
+| TCP gộp nhiều event 1 chunk       | Có — Bài 4: 1 chunk chứa 8 event. **Không** mất chảy chữ, chỉ cần buffer đúng ở client |
