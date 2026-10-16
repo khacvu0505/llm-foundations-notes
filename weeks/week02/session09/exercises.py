@@ -220,26 +220,34 @@ async def chat_events(openai_client: AsyncOpenAI, message: str) -> AsyncIterator
                     count += 1
                     # if count == 3:
                     #     raise RuntimeError("Fake error")
-                elif event.type == "response.completed":
+                # incomplete: chạm max_output_tokens (model reasoning tính cả token "nghĩ")
+                # pyright chỉ thu hẹp union qua ==, không qua `in (...)` → viết 2 vế or
+                elif event.type == "response.completed" or event.type == "response.incomplete":
+                    incomplete = event.type == "response.incomplete"
                     usage = event.response.usage
                     if usage is None:
                         yield format_sse(
-                            "done", {"input_tokens": None, "output_tokens": None, "cost_usd": None}
+                            "done",
+                            {
+                                "input_tokens": None,
+                                "output_tokens": None,
+                                "cost_usd": None,
+                                "incomplete": incomplete,
+                            },
                         )
                     else:
-                        yield (
-                            format_sse(
-                                "done",
-                                {
-                                    "input_tokens": usage.input_tokens,
-                                    "output_tokens": usage.output_tokens,
-                                    "cost_usd": cost_usd(
-                                        usage.input_tokens,
-                                        usage.output_tokens,
-                                        *PRICES[MODEL],
-                                    ),
-                                },
-                            )
+                        yield format_sse(
+                            "done",
+                            {
+                                "input_tokens": usage.input_tokens,
+                                "output_tokens": usage.output_tokens,
+                                "cost_usd": cost_usd(
+                                    usage.input_tokens,
+                                    usage.output_tokens,
+                                    *PRICES[MODEL],
+                                ),
+                                "incomplete": incomplete,
+                            },
                         )
     except asyncio.CancelledError:
         print(f"[stream cancelled] sau {count} delta")
