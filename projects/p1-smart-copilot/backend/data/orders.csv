@@ -1,0 +1,51 @@
+order_id,customer,product,quantity,unit_price,status,created_at,city
+1001,Dũng,Cà phê sữa đá,1,29000,delivered,2026-09-28,Hà Nội
+1002,Hương,Bạc xỉu,3,35000,delivered,2026-09-28,Hà Nội
+1003,Dũng,Trà sữa trân châu,1,39000,delivered,2026-09-29,Hà Nội
+1004,Chi,Trà đào cam sả,1,45000,delivered,2026-09-29,Đà Nẵng
+1005,Chi,Bạc xỉu,2,35000,delivered,2026-09-29,Đà Nẵng
+1006,Chi,Cà phê đen,3,25000,delivered,2026-09-30,Đà Nẵng
+1007,An,Trà đào cam sả,1,45000,delivered,2026-09-30,Hà Nội
+1008,Hương,Trà đào cam sả,1,45000,cancelled,2026-09-30,Hà Nội
+1009,Dũng,Cà phê đen,4,25000,delivered,2026-10-01,Hà Nội
+1010,Giang,Cà phê sữa đá,2,29000,delivered,2026-10-01,Đà Nẵng
+1011,Em,Cà phê sữa đá,3,29000,delivered,2026-10-01,TP.HCM
+1012,Bình,Trà sữa trân châu,1,39000,delivered,2026-10-01,TP.HCM
+1013,Chi,Bánh mì thịt,4,25000,cancelled,2026-10-02,Đà Nẵng
+1014,Dũng,Cà phê đen,2,25000,delivered,2026-10-02,Hà Nội
+1015,Bình,Trà đào cam sả,1,45000,delivered,2026-10-03,TP.HCM
+1016,Giang,Bạc xỉu,2,35000,cancelled,2026-10-03,Đà Nẵng
+1017,Hương,Trà sữa trân châu,1,39000,delivered,2026-10-03,Hà Nội
+1018,Em,Bánh mì thịt,2,25000,cancelled,2026-10-03,TP.HCM
+1019,Chi,Bạc xỉu,3,35000,delivered,2026-10-03,Đà Nẵng
+1020,An,Trà đào cam sả,3,45000,delivered,2026-10-04,Hà Nội
+1021,Em,Bánh mì thịt,4,25000,delivered,2026-10-04,TP.HCM
+1022,Bình,Trà đào cam sả,2,45000,delivered,2026-10-04,TP.HCM
+1023,Khoa,Trà đào cam sả,1,45000,delivered,2026-10-04,TP.HCM
+1024,Giang,Bạc xỉu,4,35000,delivered,2026-10-05,Đà Nẵng
+1025,Em,Bánh mì thịt,5,25000,delivered,2026-10-05,TP.HCM
+1026,Khoa,Cà phê sữa đá,4,29000,delivered,2026-10-05,TP.HCM
+1027,Hương,Bạc xỉu,2,35000,delivered,2026-10-06,Hà Nội
+1028,Dũng,Cà phê đen,5,25000,delivered,2026-10-06,Hà Nội
+1029,Giang,Trà sữa trân châu,1,39000,delivered,2026-10-06,Đà Nẵng
+1030,Dũng,Bạc xỉu,3,35000,delivered,2026-10-06,Hà Nội
+1031,Bình,Cà phê sữa đá,1,29000,delivered,2026-10-07,TP.HCM
+1032,An,Bạc xỉu,1,35000,delivered,2026-10-07,Hà Nội
+1033,Hương,Trà sữa trân châu,4,39000,cancelled,2026-10-07,Hà Nội
+1034,Giang,Bạc xỉu,1,35000,delivered,2026-10-07,Đà Nẵng
+1035,Bình,Trà đào cam sả,3,45000,delivered,2026-10-07,TP.HCM
+1036,An,Trà sữa trân châu,1,39000,delivered,2026-10-08,Hà Nội
+1037,Bình,Bánh mì thịt,1,25000,delivered,2026-10-08,TP.HCM
+1038,Dũng,Cà phê sữa đá,3,29000,shipping,2026-10-08,Hà Nội
+1039,Hương,Trà đào cam sả,5,45000,shipping,2026-10-09,Hà Nội
+1040,Hương,Bánh mì thịt,2,25000,shipping,2026-10-09,Hà Nội
+1041,Chi,Trà sữa trân châu,2,39000,shipping,2026-10-09,Đà Nẵng
+1042,Giang,Cà phê đen,2,25000,cancelled,2026-10-09,Đà Nẵng
+1043,Khoa,Trà sữa trân châu,1,39000,pending,2026-10-10,TP.HCM
+1044,Dũng,Bánh mì thịt,2,25000,shipping,2026-10-10,Hà Nội
+1045,Chi,Cà phê sữa đá,2,29000,shipping,2026-10-10,Đà Nẵng
+1046,Chi,Cà phê sữa đá,4,29000,cancelled,2026-10-10,Đà Nẵng
+1047,Dũng,Trà sữa trân châu,2,39000,shipping,2026-10-10,Hà Nội
+1048,Chi,Trà sữa trân châu,5,39000,shipping,2026-10-11,Đà Nẵng
+1049,Khoa,Trà đào cam sả,3,45000,pending,2026-10-11,TP.HCM
+1050,Chi,Cà phê sữa đá,2,29000,shipping,2026-10-11,Đà Nẵng

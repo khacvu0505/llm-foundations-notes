@@ -1,0 +1,10 @@
+{
+  // Workspace override: project này thụt lề 2 space (global đang dùng Black = luôn 4 space)
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": false,
+  "[python]": {
+    "editor.tabSize": 2,
+    "editor.defaultFormatter": "charliermarsh.ruff" // ruff đọc indent-width = 2 từ pyproject.toml
+  }
+}
