@@ -17,14 +17,14 @@ app = FastAPI()
 load_dotenv()  # load .env vào os.environ
 
 origins = [
-    "http://localhost:3000",
+  "http://localhost:3000",
 ]
 
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_methods=["GET", "POST"],
-    allow_headers=["content-type", "x-api-key"],
+  CORSMiddleware,
+  allow_origins=origins,
+  allow_methods=["GET", "POST"],
+  allow_headers=["content-type", "x-api-key"],
 )
 
 # Buổi 9 — SSE Streaming end-to-end (backend ở file này, frontend Next.js ở web/, ghi ở notes.md)
@@ -103,24 +103,24 @@ app.add_middleware(
 # TODO: viết code ở đây
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+  return {"status": "ok"}
 
 
 async def fake_tokens() -> AsyncIterator[str]:
-    # token "chào\nbạn" có xuống dòng → json.dumps giữ event trên 1 dòng (Bài 1b')
-    tokens = ["Xin", "chào\nbạn", "nhé"]
-    for word in tokens:
-        yield f"data: {json.dumps(word, ensure_ascii=False)}\n\n"
-        await asyncio.sleep(0.2)
+  # token "chào\nbạn" có xuống dòng → json.dumps giữ event trên 1 dòng (Bài 1b')
+  tokens = ["Xin", "chào\nbạn", "nhé"]
+  for word in tokens:
+    yield f"data: {json.dumps(word, ensure_ascii=False)}\n\n"
+    await asyncio.sleep(0.2)
 
-    yield "data: [DONE]\n\n"
+  yield "data: [DONE]\n\n"
 
 
 @app.get("/stream/fake")
 def stream_fake() -> StreamingResponse:
-    return StreamingResponse(
-        fake_tokens(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"}
-    )
+  return StreamingResponse(
+    fake_tokens(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"}
+  )
 
 
 # ============================================================================
@@ -154,21 +154,21 @@ def stream_fake() -> StreamingResponse:
 
 # TODO: viết code ở đây
 PRICES: dict[str, tuple[float, float]] = {
-    "gpt-4.1-nano": (0.10, 0.40),
-    "gpt-4o-mini": (0.15, 0.60),
-    "gpt-6-luna": (0.10, 0.50),
+  "gpt-4.1-nano": (0.10, 0.40),
+  "gpt-4o-mini": (0.15, 0.60),
+  "gpt-6-luna": (0.10, 0.50),
 }
 
 
 def cost_usd(
-    input_tokens: int,
-    output_tokens: int,
-    price_in_per_mtok: float,
-    price_out_per_mtok: float,
+  input_tokens: int,
+  output_tokens: int,
+  price_in_per_mtok: float,
+  price_out_per_mtok: float,
 ) -> float:
-    return (input_tokens / 1_000_000) * price_in_per_mtok + (
-        output_tokens / 1_000_000
-    ) * price_out_per_mtok
+  return (input_tokens / 1_000_000) * price_in_per_mtok + (
+    output_tokens / 1_000_000
+  ) * price_out_per_mtok
 
 
 # client = OpenAI()
@@ -178,96 +178,96 @@ MODEL = "gpt-6-luna"
 
 
 class ChatRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    message: str = Field(description="The user's message", max_length=500, min_length=1)
+  model_config = ConfigDict(extra="forbid")
+  message: str = Field(description="The user's message", max_length=500, min_length=1)
 
 
 def verify_api_key(x_api_key: Annotated[str | None, Header()] = None) -> None:
-    expected = os.getenv("APP_API_KEY")
-    if expected is None:
-        raise HTTPException(status_code=500, detail="Server misconfigured")
+  expected = os.getenv("APP_API_KEY")
+  if expected is None:
+    raise HTTPException(status_code=500, detail="Server misconfigured")
 
-    if x_api_key is None:
-        raise HTTPException(status_code=401, detail="Missing API Key")
+  if x_api_key is None:
+    raise HTTPException(status_code=401, detail="Missing API Key")
 
-    if not secrets.compare_digest(expected, x_api_key):
-        raise HTTPException(status_code=401, detail="Invalid API Key")
+  if not secrets.compare_digest(expected, x_api_key):
+    raise HTTPException(status_code=401, detail="Invalid API Key")
 
 
 def get_openai_client() -> AsyncOpenAI:
-    return client
+  return client
 
 
 def format_sse(event: str, data: dict[str, Any]) -> str:
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+  return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 async def chat_events(openai_client: AsyncOpenAI, message: str) -> AsyncIterator[str]:
-    count = 0
+  count = 0
 
-    try:
-        stream = await openai_client.responses.create(
-            model=MODEL,
-            input=message,
-            instructions="Trả lời ngắn gọn, bằng tiếng Việt.",
-            stream=True,
-            max_output_tokens=300,
-        )
-        async with stream:
-            async for event in stream:
-                if event.type == "response.output_text.delta":
-                    yield format_sse("delta", {"content": event.delta})
-                    count += 1
-                    # if count == 3:
-                    #     raise RuntimeError("Fake error")
-                # incomplete: chạm max_output_tokens (model reasoning tính cả token "nghĩ")
-                # pyright chỉ thu hẹp union qua ==, không qua `in (...)` → viết 2 vế or
-                elif event.type == "response.completed" or event.type == "response.incomplete":
-                    incomplete = event.type == "response.incomplete"
-                    usage = event.response.usage
-                    if usage is None:
-                        yield format_sse(
-                            "done",
-                            {
-                                "input_tokens": None,
-                                "output_tokens": None,
-                                "cost_usd": None,
-                                "incomplete": incomplete,
-                            },
-                        )
-                    else:
-                        yield format_sse(
-                            "done",
-                            {
-                                "input_tokens": usage.input_tokens,
-                                "output_tokens": usage.output_tokens,
-                                "cost_usd": cost_usd(
-                                    usage.input_tokens,
-                                    usage.output_tokens,
-                                    *PRICES[MODEL],
-                                ),
-                                "incomplete": incomplete,
-                            },
-                        )
-    except asyncio.CancelledError:
-        print(f"[stream cancelled] sau {count} delta")
-        raise
-    except (openai.APIError, RuntimeError) as e:
-        print(f"[stream error] {type(e).__name__} | model={MODEL} | {e}")
-        yield format_sse("error", {"message": "Có lỗi khi tạo câu trả lời, thử lại sau"})
-    finally:
-        print(f"[stream closed] đã gửi {count} delta")
+  try:
+    stream = await openai_client.responses.create(
+      model=MODEL,
+      input=message,
+      instructions="Trả lời ngắn gọn, bằng tiếng Việt.",
+      stream=True,
+      max_output_tokens=300,
+    )
+    async with stream:
+      async for event in stream:
+        if event.type == "response.output_text.delta":
+          yield format_sse("delta", {"content": event.delta})
+          count += 1
+          # if count == 3:
+          #     raise RuntimeError("Fake error")
+        # incomplete: chạm max_output_tokens (model reasoning tính cả token "nghĩ")
+        # pyright chỉ thu hẹp union qua ==, không qua `in (...)` → viết 2 vế or
+        elif event.type == "response.completed" or event.type == "response.incomplete":
+          incomplete = event.type == "response.incomplete"
+          usage = event.response.usage
+          if usage is None:
+            yield format_sse(
+              "done",
+              {
+                "input_tokens": None,
+                "output_tokens": None,
+                "cost_usd": None,
+                "incomplete": incomplete,
+              },
+            )
+          else:
+            yield format_sse(
+              "done",
+              {
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "cost_usd": cost_usd(
+                  usage.input_tokens,
+                  usage.output_tokens,
+                  *PRICES[MODEL],
+                ),
+                "incomplete": incomplete,
+              },
+            )
+  except asyncio.CancelledError:
+    print(f"[stream cancelled] sau {count} delta")
+    raise
+  except (openai.APIError, RuntimeError) as e:
+    print(f"[stream error] {type(e).__name__} | model={MODEL} | {e}")
+    yield format_sse("error", {"message": "Có lỗi khi tạo câu trả lời, thử lại sau"})
+  finally:
+    print(f"[stream closed] đã gửi {count} delta")
 
 
 @app.post("/chat/stream", dependencies=[Depends(verify_api_key)])
 def chat_stream(
-    body: ChatRequest, openai_client: Annotated[AsyncOpenAI, Depends(get_openai_client)]
+  body: ChatRequest, openai_client: Annotated[AsyncOpenAI, Depends(get_openai_client)]
 ) -> StreamingResponse:
-    return StreamingResponse(
-        chat_events(openai_client, body.message),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache"},
-    )
+  return StreamingResponse(
+    chat_events(openai_client, body.message),
+    media_type="text/event-stream",
+    headers={"Cache-Control": "no-cache"},
+  )
 
 
 # ============================================================================

@@ -457,11 +457,11 @@ Cấu hình cuối:
 
 ```python
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,          # thừa: app không dùng cookie → nên bỏ
-    allow_methods=["GET", "POST"],
-    allow_headers=["content-type", "x-api-key"],
+  CORSMiddleware,
+  allow_origins=["http://localhost:3000"],
+  allow_credentials=True,  # thừa: app không dùng cookie → nên bỏ
+  allow_methods=["GET", "POST"],
+  allow_headers=["content-type", "x-api-key"],
 )
 ```
 

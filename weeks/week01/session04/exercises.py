@@ -45,8 +45,8 @@ client = AsyncOpenAI()  # tạo 1 client bất đồng bộ ở cấp module
 
 
 async def achat(prompt: str, model: str = "gpt-4o-mini") -> str:
-    response = await client.responses.create(model=model, input=prompt)
-    return response.output_text
+  response = await client.responses.create(model=model, input=prompt)
+  return response.output_text
 
 
 # ============================================================================
@@ -64,34 +64,34 @@ async def achat(prompt: str, model: str = "gpt-4o-mini") -> str:
 
 # TODO: viết code ở đây
 async def run_sequential(prompts: list[str]) -> list[str]:
-    results: list[str] = []
-    for prompt in prompts:
-        result = await achat(prompt)
-        results.append(result)
-    return results
+  results: list[str] = []
+  for prompt in prompts:
+    result = await achat(prompt)
+    results.append(result)
+  return results
 
 
 async def run_parallel(prompts: list[str]) -> list[str]:
-    tasks = [achat(prompt) for prompt in prompts]
-    results = await asyncio.gather(*tasks)
-    return results
+  tasks = [achat(prompt) for prompt in prompts]
+  results = await asyncio.gather(*tasks)
+  return results
 
 
 async def main():
-    prompts = [
-        "Đặt tên quán cà phê ở Đà Lạt. Chỉ cần tên quán",
-        "Đặt tên quán trà sữa ở Đà Lạt. Chỉ cần tên quán",
-        "Đặt tên tiệm bánh ở Đà Lạt. Chỉ cần tên tiệm",
-    ]
-    start_time = time.perf_counter()
-    await run_sequential(prompts)
-    end_time = time.perf_counter()
-    print(f"Sequential time: {end_time - start_time:.2f} seconds")
+  prompts = [
+    "Đặt tên quán cà phê ở Đà Lạt. Chỉ cần tên quán",
+    "Đặt tên quán trà sữa ở Đà Lạt. Chỉ cần tên quán",
+    "Đặt tên tiệm bánh ở Đà Lạt. Chỉ cần tên tiệm",
+  ]
+  start_time = time.perf_counter()
+  await run_sequential(prompts)
+  end_time = time.perf_counter()
+  print(f"Sequential time: {end_time - start_time:.2f} seconds")
 
-    start_time2 = time.perf_counter()
-    await run_parallel(prompts)
-    end_time2 = time.perf_counter()
-    print(f"Parallel time: {end_time2 - start_time2:.2f} seconds")
+  start_time2 = time.perf_counter()
+  await run_parallel(prompts)
+  end_time2 = time.perf_counter()
+  print(f"Parallel time: {end_time2 - start_time2:.2f} seconds")
 
 
 # ============================================================================
@@ -118,20 +118,20 @@ client2 = OpenAI()
 
 
 def stream_chat(prompt: str) -> None:
-    ttft: float | None = None  # chưa nhận mảnh nào
-    start = time.perf_counter()
-    stream = client2.responses.create(model="gpt-6-luna", input=prompt, stream=True)
-    for event in stream:
-        if event.type == "response.output_text.delta":
-            if ttft is None:  # chỉ mảnh đầu tiên mới gán
-                ttft = time.perf_counter() - start
-            print(event.delta, end="", flush=True)
-        elif event.type == "response.completed":
-            total = time.perf_counter() - start
-            print()  # xuống dòng sau đoạn text
-            print(f"TTFT: {ttft:.2f} seconds")
-            print(f"Total time: {total:.2f} seconds")
-            print(f"Usage: {event.response.usage}")
+  ttft: float | None = None  # chưa nhận mảnh nào
+  start = time.perf_counter()
+  stream = client2.responses.create(model="gpt-6-luna", input=prompt, stream=True)
+  for event in stream:
+    if event.type == "response.output_text.delta":
+      if ttft is None:  # chỉ mảnh đầu tiên mới gán
+        ttft = time.perf_counter() - start
+      print(event.delta, end="", flush=True)
+    elif event.type == "response.completed":
+      total = time.perf_counter() - start
+      print()  # xuống dòng sau đoạn text
+      print(f"TTFT: {ttft:.2f} seconds")
+      print(f"Total time: {total:.2f} seconds")
+      print(f"Usage: {event.response.usage}")
 
 
 # ============================================================================
@@ -147,14 +147,14 @@ def stream_chat(prompt: str) -> None:
 
 # TODO: viết code ở đây
 async def astream_chat(prompt: str) -> str:
-    stream = await client.responses.create(model="gpt-6-luna", input=prompt, stream=True)
-    text = ""
-    async for event in stream:
-        if event.type == "response.output_text.delta":
-            text += event.delta
-            print(event.delta, end="", flush=True)
-    print()  # xuống dòng sau đoạn text
-    return text
+  stream = await client.responses.create(model="gpt-6-luna", input=prompt, stream=True)
+  text = ""
+  async for event in stream:
+    if event.type == "response.output_text.delta":
+      text += event.delta
+      print(event.delta, end="", flush=True)
+  print()  # xuống dòng sau đoạn text
+  return text
 
 
 # ============================================================================
@@ -178,77 +178,77 @@ async def astream_chat(prompt: str) -> str:
 # Giá USD / 1M token (input, output), tra ngày 2026-09-30
 # Nguồn: developers.openai.com/api/docs/pricing
 PRICES: dict[str, tuple[float, float]] = {
-    "gpt-4.1-nano": (0.10, 0.40),
-    "gpt-4o-mini": (0.15, 0.60),
-    "gpt-6-luna": (0.10, 0.50),
+  "gpt-4.1-nano": (0.10, 0.40),
+  "gpt-4o-mini": (0.15, 0.60),
+  "gpt-6-luna": (0.10, 0.50),
 }
 
 
 @dataclass
 class Measurement:
-    model: str
-    latency: float
-    input_tokens: int
-    output_tokens: int
-    cost: float
-    text: str
+  model: str
+  latency: float
+  input_tokens: int
+  output_tokens: int
+  cost: float
+  text: str
 
 
 def cost_usd(
-    input_tokens: int, output_tokens: int, price_in_per_mtok: float, price_out_per_mtok: float
+  input_tokens: int, output_tokens: int, price_in_per_mtok: float, price_out_per_mtok: float
 ) -> float:
-    return (input_tokens / 1_000_000) * price_in_per_mtok + (
-        output_tokens / 1_000_000
-    ) * price_out_per_mtok
+  return (input_tokens / 1_000_000) * price_in_per_mtok + (
+    output_tokens / 1_000_000
+  ) * price_out_per_mtok
 
 
 async def measure(model: str, prompt: str) -> Measurement:
-    start = time.perf_counter()
-    response = await client.responses.create(model=model, input=prompt)
-    latency = time.perf_counter() - start
+  start = time.perf_counter()
+  response = await client.responses.create(model=model, input=prompt)
+  latency = time.perf_counter() - start
 
-    usage = response.usage
-    input_tokens = usage.input_tokens if usage else 0
-    output_tokens = usage.output_tokens if usage else 0
-    price_in, price_out = PRICES[model]
-    cost = cost_usd(input_tokens, output_tokens, price_in, price_out)
+  usage = response.usage
+  input_tokens = usage.input_tokens if usage else 0
+  output_tokens = usage.output_tokens if usage else 0
+  price_in, price_out = PRICES[model]
+  cost = cost_usd(input_tokens, output_tokens, price_in, price_out)
 
-    return Measurement(model, latency, input_tokens, output_tokens, cost, response.output_text)
+  return Measurement(model, latency, input_tokens, output_tokens, cost, response.output_text)
 
 
 async def compare_models(prompt: str) -> None:
-    start = time.perf_counter()
-    results = await asyncio.gather(*[measure(model, prompt) for model in PRICES])
-    total = time.perf_counter() - start
+  start = time.perf_counter()
+  results = await asyncio.gather(*[measure(model, prompt) for model in PRICES])
+  total = time.perf_counter() - start
 
-    print(f"{'model':<15} | {'latency':>8} | {'input':>6} | {'output':>6} | {'cost':>10}")
-    print("-" * 57)
-    for r in results:
-        print(
-            f"{r.model:<15} | {r.latency:>7.2f}s | {r.input_tokens:>6} | "
-            f"{r.output_tokens:>6} | ${r.cost:>9.6f}"
-        )
-    print(f"\nTổng thời gian (gather): {total:.2f}s")
+  print(f"{'model':<15} | {'latency':>8} | {'input':>6} | {'output':>6} | {'cost':>10}")
+  print("-" * 57)
+  for r in results:
+    print(
+      f"{r.model:<15} | {r.latency:>7.2f}s | {r.input_tokens:>6} | "
+      f"{r.output_tokens:>6} | ${r.cost:>9.6f}"
+    )
+  print(f"\nTổng thời gian (gather): {total:.2f}s")
 
-    for r in results:
-        print(f"\n--- {r.model} ---\n{r.text}")
+  for r in results:
+    print(f"\n--- {r.model} ---\n{r.text}")
 
 
 if __name__ == "__main__":
-    # test bài 1
-    # prompt = "Viết 1 khổ thơ lục bát ngắn về mùa xuân"
-    # response_text = asyncio.run(achat(prompt))
-    # print("Response:", response_text)
+  # test bài 1
+  # prompt = "Viết 1 khổ thơ lục bát ngắn về mùa xuân"
+  # response_text = asyncio.run(achat(prompt))
+  # print("Response:", response_text)
 
-    # test bài 2
-    # asyncio.run(main())
+  # test bài 2
+  # asyncio.run(main())
 
-    # test bài 3
-    # stream_chat("Giới thiệu Đà Lạt trong 5 câu")
+  # test bài 3
+  # stream_chat("Giới thiệu Đà Lạt trong 5 câu")
 
-    # test bài 4
-    # full_text = asyncio.run(astream_chat("Giới thiệu Đà Lạt trong 5 câu"))
-    # print(f"Returned: {len(full_text)} ký tự")
+  # test bài 4
+  # full_text = asyncio.run(astream_chat("Giới thiệu Đà Lạt trong 5 câu"))
+  # print(f"Returned: {len(full_text)} ký tự")
 
-    # test bài 5
-    asyncio.run(compare_models("Giới thiệu Đà Lạt trong 5 câu"))
+  # test bài 5
+  asyncio.run(compare_models("Giới thiệu Đà Lạt trong 5 câu"))

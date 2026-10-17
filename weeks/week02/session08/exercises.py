@@ -81,97 +81,97 @@ load_dotenv()  # load .env vào os.environ
 # Câu hỏi ghi notes.md: query param bên Express là string, bên FastAPI là gì? 422 nghĩa là gì, khác
 #   400 chỗ nào? Lỗi validate xảy ra trước hay sau khi chạy vào hàm của mình?
 origins = [
-    "http://localhost:3000",
+  "http://localhost:3000",
 ]
 
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_methods=["GET", "POST"],
-    allow_headers=["content-type", "x-api-key"],
+  CORSMiddleware,
+  allow_origins=origins,
+  allow_methods=["GET", "POST"],
+  allow_headers=["content-type", "x-api-key"],
 )
 
 
 # TODO: viết code ở đây
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+  return {"status": "ok"}
 
 
 Status = Literal["delivered", "shipping", "pending", "cancelled"]
 
 
 class OrderItem(TypedDict):
-    order_id: int
-    customer: str
-    product: str
-    quantity: int
-    unit_price: int
-    status: Status
-    created_at: str
+  order_id: int
+  customer: str
+  product: str
+  quantity: int
+  unit_price: int
+  status: Status
+  created_at: str
 
 
 class OrderResponse(TypedDict):
-    orders: list[OrderItem]
-    total: int
-    limit: int
+  orders: list[OrderItem]
+  total: int
+  limit: int
 
 
 def get_orders_from_csv() -> list[OrderItem]:
-    order_path = Path(__file__).parent / "orders.csv"
-    return cast(list[OrderItem], pd.read_csv(order_path).to_dict(orient="records"))
+  order_path = Path(__file__).parent / "orders.csv"
+  return cast(list[OrderItem], pd.read_csv(order_path).to_dict(orient="records"))
 
 
 class PaginationParams(BaseModel):
-    limit: int = Field(10, ge=1, le=50)
-    offset: int = Field(0, ge=0)
+  limit: int = Field(10, ge=1, le=50)
+  offset: int = Field(0, ge=0)
 
 
 @app.get("/orders")
 def get_orders(
-    params: Annotated[PaginationParams, Depends()],
-    customer: str | None = None,
-    status: Status | None = None,
+  params: Annotated[PaginationParams, Depends()],
+  customer: str | None = None,
+  status: Status | None = None,
 ) -> OrderResponse:
-    # Read orders.csv into a DataFrame
-    orders = get_orders_from_csv()
+  # Read orders.csv into a DataFrame
+  orders = get_orders_from_csv()
 
-    #  Filter orders based on customer and status if provided
-    if customer is not None:
-        orders = [order for order in orders if order["customer"].lower() == customer.lower()]
+  #  Filter orders based on customer and status if provided
+  if customer is not None:
+    orders = [order for order in orders if order["customer"].lower() == customer.lower()]
 
-    if status is not None:
-        orders = [order for order in orders if order["status"].lower() == status.lower()]
+  if status is not None:
+    orders = [order for order in orders if order["status"].lower() == status.lower()]
 
-    orders_filtered = orders[params.offset : params.offset + params.limit]
+  orders_filtered = orders[params.offset : params.offset + params.limit]
 
-    return {"orders": orders_filtered, "total": len(orders), "limit": params.limit}
+  return {"orders": orders_filtered, "total": len(orders), "limit": params.limit}
 
 
 class OrdersSummary(TypedDict):
-    total_orders: int
-    total_amount: int
+  total_orders: int
+  total_amount: int
 
 
 @app.get("/orders/summary")
 def get_orders_summary() -> OrdersSummary:
-    orders = get_orders_from_csv()
-    orders_filtered = [order for order in orders if order["status"] != "cancelled"]
-    summary: OrdersSummary = {
-        "total_orders": len(orders_filtered),
-        "total_amount": sum(order["quantity"] * order["unit_price"] for order in orders_filtered),
-    }
-    return summary
+  orders = get_orders_from_csv()
+  orders_filtered = [order for order in orders if order["status"] != "cancelled"]
+  summary: OrdersSummary = {
+    "total_orders": len(orders_filtered),
+    "total_amount": sum(order["quantity"] * order["unit_price"] for order in orders_filtered),
+  }
+  return summary
 
 
 @app.get("/orders/{order_id}")
 def get_order(order_id: int) -> OrderItem | None:
-    # Read orders.csv into a DataFrame
-    orders = get_orders_from_csv()
-    for order in orders:
-        if order["order_id"] == order_id:
-            return order
-    raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
+  # Read orders.csv into a DataFrame
+  orders = get_orders_from_csv()
+  for order in orders:
+    if order["order_id"] == order_id:
+      return order
+  raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
 
 
 # ============================================================================
@@ -203,21 +203,21 @@ def get_order(order_id: int) -> OrderItem | None:
 
 # TODO: viết code ở đây
 PRICES: dict[str, tuple[float, float]] = {
-    "gpt-4.1-nano": (0.10, 0.40),
-    "gpt-4o-mini": (0.15, 0.60),
-    "gpt-6-luna": (0.10, 0.50),
+  "gpt-4.1-nano": (0.10, 0.40),
+  "gpt-4o-mini": (0.15, 0.60),
+  "gpt-6-luna": (0.10, 0.50),
 }
 
 
 def cost_usd(
-    input_tokens: int,
-    output_tokens: int,
-    price_in_per_mtok: float,
-    price_out_per_mtok: float,
+  input_tokens: int,
+  output_tokens: int,
+  price_in_per_mtok: float,
+  price_out_per_mtok: float,
 ) -> float:
-    return (input_tokens / 1_000_000) * price_in_per_mtok + (
-        output_tokens / 1_000_000
-    ) * price_out_per_mtok
+  return (input_tokens / 1_000_000) * price_in_per_mtok + (
+    output_tokens / 1_000_000
+  ) * price_out_per_mtok
 
 
 # client = OpenAI()
@@ -227,71 +227,71 @@ MODEL = "gpt-6-luna"
 
 
 class ChatRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    message: str = Field(description="The user's message", max_length=500, min_length=1)
+  model_config = ConfigDict(extra="forbid")
+  message: str = Field(description="The user's message", max_length=500, min_length=1)
 
 
 class ChatResponse(BaseModel):
-    reply: str = Field(description="The model's reply")
-    input_tokens: int | None = Field(description="Number of input tokens used")
-    output_tokens: int | None = Field(description="Number of output tokens used")
-    cost_usd: float | None = Field(description="Estimated cost in USD")
+  reply: str = Field(description="The model's reply")
+  input_tokens: int | None = Field(description="Number of input tokens used")
+  output_tokens: int | None = Field(description="Number of output tokens used")
+  cost_usd: float | None = Field(description="Estimated cost in USD")
 
 
 def verify_api_key(x_api_key: Annotated[str | None, Header()] = None) -> None:
-    expected = os.getenv("APP_API_KEY")
-    if expected is None:
-        raise HTTPException(status_code=500, detail="Server misconfigured")
+  expected = os.getenv("APP_API_KEY")
+  if expected is None:
+    raise HTTPException(status_code=500, detail="Server misconfigured")
 
-    if x_api_key is None:
-        raise HTTPException(status_code=401, detail="Missing API Key")
+  if x_api_key is None:
+    raise HTTPException(status_code=401, detail="Missing API Key")
 
-    if not secrets.compare_digest(expected, x_api_key):
-        raise HTTPException(status_code=401, detail="Invalid API Key")
+  if not secrets.compare_digest(expected, x_api_key):
+    raise HTTPException(status_code=401, detail="Invalid API Key")
 
 
 def get_openai_client() -> AsyncOpenAI:
-    return client
+  return client
 
 
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(verify_api_key)])
 async def chat(
-    body: ChatRequest, openai_client: Annotated[AsyncOpenAI, Depends(get_openai_client)]
+  body: ChatRequest, openai_client: Annotated[AsyncOpenAI, Depends(get_openai_client)]
 ) -> ChatResponse:
-    try:
-        print(f"Received message: {body.message}")
-        response = await openai_client.responses.create(
-            model=MODEL,
-            input=body.message,
-            instructions="Trả lời ngắn gọn, bằng tiếng Việt.",
-            max_output_tokens=200,
-        )
-    except openai.APIError as e:
-        print(f"[openai error] {type(e).__name__} | model={MODEL} | {e}")
-        raise HTTPException(status_code=502, detail="Something went wrong. Try it later") from e
-
-    usage = response.usage
-    if usage is None:
-        print("Warning: response.usage is None. Cannot calculate cost.")
-        return ChatResponse(
-            reply=response.output_text,
-            input_tokens=None,
-            output_tokens=None,
-            cost_usd=None,
-        )
-
-    input_tokens = usage.input_tokens
-    output_tokens = usage.output_tokens
-    return ChatResponse(
-        reply=response.output_text,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        cost_usd=cost_usd(
-            input_tokens,
-            output_tokens,
-            *PRICES[MODEL],
-        ),
+  try:
+    print(f"Received message: {body.message}")
+    response = await openai_client.responses.create(
+      model=MODEL,
+      input=body.message,
+      instructions="Trả lời ngắn gọn, bằng tiếng Việt.",
+      max_output_tokens=200,
     )
+  except openai.APIError as e:
+    print(f"[openai error] {type(e).__name__} | model={MODEL} | {e}")
+    raise HTTPException(status_code=502, detail="Something went wrong. Try it later") from e
+
+  usage = response.usage
+  if usage is None:
+    print("Warning: response.usage is None. Cannot calculate cost.")
+    return ChatResponse(
+      reply=response.output_text,
+      input_tokens=None,
+      output_tokens=None,
+      cost_usd=None,
+    )
+
+  input_tokens = usage.input_tokens
+  output_tokens = usage.output_tokens
+  return ChatResponse(
+    reply=response.output_text,
+    input_tokens=input_tokens,
+    output_tokens=output_tokens,
+    cost_usd=cost_usd(
+      input_tokens,
+      output_tokens,
+      *PRICES[MODEL],
+    ),
+  )
 
 
 # ============================================================================
@@ -329,25 +329,25 @@ async def chat(
 # TODO: viết code ở đây
 @app.get("/slow/def")
 def slow_def() -> dict[str, str]:
-    time.sleep(1)
-    return {"status": "ok"}
+  time.sleep(1)
+  return {"status": "ok"}
 
 
 @app.get("/slow/async-block")
 async def slow_async_block() -> dict[str, str]:
-    time.sleep(1)
-    return {"status": "ok"}
+  time.sleep(1)
+  return {"status": "ok"}
 
 
 @app.get("/slow/async-await")
 async def slow_async_await() -> dict[str, str]:
-    await asyncio.sleep(1)
-    return {"status": "ok"}
+  await asyncio.sleep(1)
+  return {"status": "ok"}
 
 
 @app.get("/boom")
 def boom() -> None:
-    raise ValueError("Bug giả lập")
+  raise ValueError("Bug giả lập")
 
 
 # ============================================================================

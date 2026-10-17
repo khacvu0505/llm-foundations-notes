@@ -31,7 +31,7 @@ from typing import Literal, TypedDict
 # TODO: viết code ở đây
 # Cách 1: Hàm thông thường
 def even_squares(nums: list[int]) -> list[int]:
-    return [value**2 for value in nums if value % 2 == 0]
+  return [value**2 for value in nums if value % 2 == 0]
 
 
 # ============================================================================
@@ -54,11 +54,11 @@ def even_squares(nums: list[int]) -> list[int]:
 
 # TODO: viết code ở đây
 def group_by[T](items: list[T], key_fn: Callable[[T], str]) -> dict[str, list[T]]:
-    result: dict[str, list[T]] = {}
-    for item in items:
-        key = key_fn(item)
-        result.setdefault(key, []).append(item)
-    return result
+  result: dict[str, list[T]] = {}
+  for item in items:
+    key = key_fn(item)
+    result.setdefault(key, []).append(item)
+  return result
 
 
 # ============================================================================
@@ -92,24 +92,24 @@ Role = Literal["admin", "member"]
 
 
 class RawUser(TypedDict, total=False):  # total=False nghĩa là mọi key optional
-    name: str
-    age: int
-    role: Role
+  name: str
+  age: int
+  role: Role
 
 
 @dataclass
 class User:
-    name: str = ""
-    age: int = 0
-    role: Role = "member"
+  name: str = ""
+  age: int = 0
+  role: Role = "member"
 
-    @property
-    def is_adult(self) -> bool:
-        return self.age >= 18
+  @property
+  def is_adult(self) -> bool:
+    return self.age >= 18
 
 
 def parse_user(raw: RawUser) -> User:
-    return User(name=raw.get("name", ""), age=raw.get("age", 0), role=raw.get("role", "member"))
+  return User(name=raw.get("name", ""), age=raw.get("age", 0), role=raw.get("role", "member"))
 
 
 # ============================================================================
@@ -133,12 +133,12 @@ def parse_user(raw: RawUser) -> User:
 
 # TODO: viết code ở đây
 async def fake_fetch(item_id: str) -> str:
-    await asyncio.sleep(0.05)
-    return f"data:{item_id}"
+  await asyncio.sleep(0.05)
+  return f"data:{item_id}"
 
 
 async def fetch_all(ids: list[str]) -> list[str]:
-    return await asyncio.gather(*[fake_fetch(item_id) for item_id in ids])
+  return await asyncio.gather(*[fake_fetch(item_id) for item_id in ids])
 
 
 # ============================================================================
@@ -159,18 +159,18 @@ async def fetch_all(ids: list[str]) -> list[str]:
 
 # TODO: viết code ở đây`
 class Timer:
-    def __enter__(self):
+  def __enter__(self):
 
-        self.start_time = time.perf_counter()
-        return self
+    self.start_time = time.perf_counter()
+    return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.elapsed = time.perf_counter() - self.start_time
+  def __exit__(self, exc_type, exc_value, traceback):
+    self.elapsed = time.perf_counter() - self.start_time
 
 
 if __name__ == "__main__":
-    print(even_squares([1, 2, 3, 4, 5]))
-    print(group_by([1, 2, 3, 4, 5], lambda x: str(x % 2 == 0)))
-    print(parse_user({"name": "Quyen", "age": 1, "role": "member"}))
-    print(parse_user({"name": "Vu", "age": 2, "role": "admin"}))
-    print(asyncio.run(fetch_all(["a", "b", "c", "d", "e"])))
+  print(even_squares([1, 2, 3, 4, 5]))
+  print(group_by([1, 2, 3, 4, 5], lambda x: str(x % 2 == 0)))
+  print(parse_user({"name": "Quyen", "age": 1, "role": "member"}))
+  print(parse_user({"name": "Vu", "age": 2, "role": "admin"}))
+  print(asyncio.run(fetch_all(["a", "b", "c", "d", "e"])))
