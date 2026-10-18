@@ -3,7 +3,7 @@ from openai import AsyncOpenAI
 
 load_dotenv()
 
-client = AsyncOpenAI()
+client = AsyncOpenAI(max_retries=2, timeout=30)
 MODEL = "gpt-6-luna"
 
 PRICES: dict[str, tuple[float, float]] = {
