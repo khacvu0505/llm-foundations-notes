@@ -118,8 +118,89 @@ Lỗi 401 / 429 từ FastAPI chuyển tiếp thế nào (status, `Retry-After`):
 
 ## Bài 2 — Đọc stream có type
 
-Vì sao ghép `tool_result` theo `call_id`; vì sao `applyEvent` là hàm thuần:
+_(Claude ghi, 2026-10-19, theo yêu cầu. Nguồn: test Node chạy chính `lib/*.ts` (tsc 5.9.3 `--strict`, file test ở
+scratchpad, không commit) + 1 lượt hỏi thật qua `localhost:3100/api/chat` → `readEvents` → `applyEvent` / `errors.ts`
+(gọi từ Node, **chưa** bấm trên trình duyệt), `tail backend/logs/cost.jsonl`. `pnpm exec tsc --noEmit` + `pnpm lint`
+trong `web/` → sạch.)_
 
+Code (ai viết):
+
+| File                   | Nội dung                                                                                         | Ai viết                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| `web/lib/types.ts`     | `ChatEventMap` → `ChatEvent` (union sinh bằng mapped type), `TextPart`, `ToolPart`, `AssistantMessage` | mình viết bản đầu, Claude sửa theo yêu cầu        |
+| `web/lib/sse.ts`       | `parseEvent(raw)` (type guard `isEventName`) + `readEvents(body)` (async generator)              | mình (Claude review nhiều vòng)                    |
+| `web/lib/applyEvent.ts`| hàm thuần `(message, event) → message mới`                                                      | mình viết 4 case; Claude sửa case `error` + `{ }` |
+| `web/lib/errors.ts`    | `errorFromResponse(res)`, `errorFromException(err)` (`null` = bấm Dừng)                          | Claude viết theo yêu cầu                           |
+| `web/app/page.tsx`     | trang thử: form + Gửi/Dừng + `<pre>` JSON (Bài 3 thay bằng component)                           | Claude viết theo yêu cầu                           |
+
+Test đơn vị (Node, gọi thẳng hàm):
+
+| Hàm                 | Thử                                                    | Kết quả                                                 |
+| ------------------- | ------------------------------------------------------ | ------------------------------------------------------- |
+| `parseEvent`        | event đúng / `tool_result ok:false`                    | `{ event, data }` đúng                                  |
+| `parseEvent`        | JSON hỏng / tên lạ `ping` / thiếu `data:`              | `null` cả 3                                             |
+| `readEvents`        | 2 event 1 chunk / 1 event cắt 2 chunk / chữ `ạ` cắt đôi | đủ event, `ạ` nguyên vẹn                                |
+| `readEvents`        | event cuối không có `\n\n`                             | vẫn ra (nhờ flush sau vòng lặp)                         |
+| `readEvents`        | `break` sớm / stream lỗi giữa chừng (AbortError)       | lock được nhả; lỗi lên tới caller, không lặp vô hạn    |
+| `applyEvent`        | 2 tool **cùng tên** `get_weather`, kết quả về **ngược** | ghép đúng theo `call_id` (Hà Nội ↔ `a`, Đà Nẵng ↔ `b`) |
+| `applyEvent`        | `error` giữa chừng / gọi lại trên cùng input            | giữ parts + thêm `error`; message cũ không đổi          |
+| `errorFromResponse` | 429 + `Retry-After: 60` / không header / header là ngày | "…sau 60 giây" / "…sau ít phút" / "…sau ít phút"       |
+| `errorFromResponse` | 401 / 502 / 500 body HTML / 422 JSON                    | lỗi cấu hình / không kết nối / không kết nối / `error` của body |
+| `errorFromException`| AbortError (giả + `fetch` bị abort thật) / `fetch` lỗi mạng thật | `null` / "Không kết nối được…" (`TypeError`) |
+
+Hỏi thật qua `/api/chat` (1 lần mỗi câu, ms tính từ lúc gửi):
+
+| Câu hỏi                                              | Parts cuối                                   | Part đầu | Chữ đầu | Tổng | `steps` |
+| ---------------------------------------------------- | -------------------------------------------- | -------- | ------- | ---- | ------- |
+| "Xin chào"                                           | text                                         | 1445     | 1445    | 1819 | 1       |
+| "Đơn nào của An đang giao?"                          | `query_orders` ok (0 đơn) → text             | 1376     | 2465    | 2777 | 2       |
+| "Tuần này món nào bán chạy nhất?"                    | `sales_summary` ok (`data` là list) → text   | 2117     | 4584    | 5176 | 2       |
+| "Mai Đà Nẵng mưa không, có nên giao đơn không?"      | `get_weather` ok (25.3°C, ít mây) → text     | 1917     | 5297    | 5950 | 2       |
+| "So sánh doanh thu theo ngày với thời tiết Hà Nội…"  | `sales_summary` ok, `get_weather` ok → text  | 1368     | 5611    | 6403 | 3       |
+| Câu 2, Dừng sau 2.5s                                 | `query_orders` ok, chưa có text → `stopped`  | 1836     | —       | 2508 | —       |
+| 6 câu "Hi" liên tiếp                                 | câu 1–5 ok, câu 6 `429` sau 19ms → "Bạn hỏi nhanh quá, thử lại sau 60 giây" | | | | |
+
+- Dừng: backend log `"status": "cancelled"`, `latency_ms: 2473`, `tools: ["query_orders"]` → huỷ đi tới tận FastAPI.
+- Key: tìm trong HTML trang + 16 JS chunk của `localhost:3100` → **0** lần (so khớp chuỗi, không in key).
+
+Quan sát:
+
+- _(Claude ghi)_ **Câu có tool: part đầu ~1.4–2.1s nhưng chữ đầu ~2.5–5.6s** → chờ 3–4s mà chỉ có `<pre>` thì như treo.
+  Bài 3 nên hiện component / "đang tra cứu…" ngay khi có ToolPart `running`, không đợi chữ.
+- _(Claude ghi)_ Câu 5 gọi 2 tool ở **2 bước riêng** (`steps: 3`), không cùng 1 bước → lần này **chưa** gặp thật
+  trường hợp "2 tool cùng bước", chỉ unit test (2 `get_weather`, kết quả về ngược) kiểm.
+- _(Claude ghi)_ Câu 3 model tự nói "chưa lọc riêng tuần này" → `sales_summary` không có tham số ngày, giới hạn của
+  tool backend chứ không phải lỗi frontend.
+- _(Claude ghi)_ `Retry-After` luôn là 60 dù có thể còn ít giây hơn → nợ Buổi 10 (đã ghi ở "Nợ từ Buổi 10").
+- _(Claude ghi)_ Bug gặp khi viết (để nhớ):
+  - `JSON.parse` trả `any` → `return JSON.parse(data)` (mất tên event) vẫn qua `tsc`.
+  - `as` chỉ làm `tsc` im, không chặn `ping` lúc chạy → cần type guard.
+  - `getReader()` trong vòng lặp → `ReadableStream is locked`.
+  - `try/catch` trong `while` nuốt lỗi → lặp vô hạn khi stream lỗi → đổi thành `try { while } finally { releaseLock }`.
+  - `if (buffer.trim() === "") continue` trước `for` → mất hết event (vì `buffer` sau `pop()` thường rỗng).
+  - `push` / gán `parts[i] =` → mutate message cũ (Strict Mode gọi updater 2 lần → chữ nhân đôi).
+
+Còn mở (tự làm):
+
+- [ ] Thử trên **trình duyệt**: chữ chảy mượt, Dừng hiện "Đã dừng", Network chỉ có `/api/chat`, Response thấy event
+      đến từng cái (gộp với mục "Thử từ trình duyệt" của Bài 1)
+- [ ] (Tuỳ chọn) 422 đang hiện tiếng Anh `"Invalid request"` (chuỗi trong `route.ts`) → đổi sang tiếng Việt?
+
+Vì sao ghép `tool_result` theo `call_id` (không theo thứ tự / theo `name`):
+
+- _Bản tham khảo do Claude viết:_ 1 bước model có thể gọi nhiều tool, kể cả **cùng 1 tool** với tham số khác (2
+  `get_weather` cho 2 thành phố) → `name` trùng. Thứ tự kết quả cũng không chắc giống thứ tự gọi (backend hiện chạy
+  tuần tự nên đang khớp, nhưng đổi sang chạy song song là lệch). `call_id` do model sinh, duy nhất cho mỗi lần gọi,
+  và backend gửi kèm ở cả `tool_call` lẫn `tool_result` → là khoá duy nhất ghép đúng. Unit test: 2 `get_weather`,
+  kết quả về ngược → vẫn đúng chỗ.
+- Bản của mình:
+
+Vì sao tách `applyEvent` thành hàm thuần:
+
+- _Bản tham khảo do Claude viết:_ (1) **Test được không cần React**: input → output, như test ở trên.
+  (2) **An toàn với Strict Mode**: React dev gọi updater 2 lần; hàm thuần (không mutate, không `setState` bên trong)
+  gọi 2 lần vẫn ra cùng kết quả. (3) **Tách lớp**: `sse.ts` lo byte → event, `applyEvent` lo event → state, component
+  chỉ render → Bài 4 (widget) và route giả (Bài 5) dùng lại được nguyên. Giống reducer của Redux / `useReducer`.
 - Bản của mình:
 
 ## Bài 3 — Generative UI
