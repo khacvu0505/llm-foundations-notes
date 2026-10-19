@@ -39,6 +39,7 @@ dev = [
 [tool.ruff]
 line-length = 100          # độ dài dòng tối đa, áp cho cả lint lẫn format
 target-version = "py312"   # cho ruff biết syntax 3.12 để gợi ý đúng
+indent-width = 2           # thụt lề 2 space thay vì 4 (mặc định PEP 8)
 
 [tool.ruff.lint]
 # Chọn bộ rule được bật (mặc định ruff chỉ bật E + F):

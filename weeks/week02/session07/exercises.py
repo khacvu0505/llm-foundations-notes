@@ -82,123 +82,122 @@ MODEL = "gpt-6-luna"
 
 # TODO: viết code ở đây
 CITIES = {
-    "Hà Nội": {"latitude": 21.03, "longitude": 105.85},
-    "Đà Nẵng": {"latitude": 16.05, "longitude": 108.20},
-    "TP.HCM": {"latitude": 10.75, "longitude": 106.67},
+  "Hà Nội": {"latitude": 21.03, "longitude": 105.85},
+  "Đà Nẵng": {"latitude": 16.05, "longitude": 108.20},
+  "TP.HCM": {"latitude": 10.75, "longitude": 106.67},
 }
 
 # Mã thời tiết WMO → chữ. Nguồn: https://open-meteo.com/en/docs (mục "WMO Weather interpretation
 # codes"). Bỏ các mã tuyết / mưa băng (56-57, 66-67, 71-77, 85-86) vì không gặp ở VN.
 WMO_CODES: dict[int, str] = {
-    0: "trời quang",
-    1: "ít mây",
-    2: "mây rải rác",
-    3: "nhiều mây, u ám",
-    45: "sương mù",
-    48: "sương mù",
-    51: "mưa phùn nhẹ",
-    53: "mưa phùn",
-    55: "mưa phùn dày",
-    61: "mưa nhỏ",
-    63: "mưa vừa",
-    65: "mưa to",
-    80: "mưa rào nhẹ",
-    81: "mưa rào",
-    82: "mưa rào rất to",
-    95: "dông",
-    96: "dông kèm mưa đá nhỏ",
-    97: "dông mạnh",
-    99: "dông kèm mưa đá lớn",
+  0: "trời quang",
+  1: "ít mây",
+  2: "mây rải rác",
+  3: "nhiều mây, u ám",
+  45: "sương mù",
+  48: "sương mù",
+  51: "mưa phùn nhẹ",
+  53: "mưa phùn",
+  55: "mưa phùn dày",
+  61: "mưa nhỏ",
+  63: "mưa vừa",
+  65: "mưa to",
+  80: "mưa rào nhẹ",
+  81: "mưa rào",
+  82: "mưa rào rất to",
+  95: "dông",
+  96: "dông kèm mưa đá nhỏ",
+  97: "dông mạnh",
+  99: "dông kèm mưa đá lớn",
 }
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
 
 class WeatherResponse(TypedDict):
-    city: str
-    temperature_c: float
-    condition: str
-    observed_at: str
+  city: str
+  temperature_c: float
+  condition: str
+  observed_at: str
 
 
 def get_weather(city: Literal["Hà Nội", "Đà Nẵng", "TP.HCM"]) -> WeatherResponse:
-    """Get current weather for a given city"""
-    response = (
-        httpx2.get(
-            OPEN_METEO_URL,
-            params={
-                **CITIES[city],
-                "current": "temperature_2m,weather_code",
-                "timezone": "Asia/Ho_Chi_Minh",
-            },
-        )
-        .raise_for_status()
-        .json()
+  """Get current weather for a given city"""
+  response = (
+    httpx2.get(
+      OPEN_METEO_URL,
+      params={
+        **CITIES[city],
+        "current": "temperature_2m,weather_code",
+        "timezone": "Asia/Ho_Chi_Minh",
+      },
     )
-    current = response["current"]
-    code = current["weather_code"]
-    return WeatherResponse(
-        city=city,
-        temperature_c=current["temperature_2m"],
-        condition=WMO_CODES.get(code, f"không xác định (mã {code})"),
-        observed_at=current["time"].replace("T", " "),
-    )
+    .raise_for_status()
+    .json()
+  )
+  current = response["current"]
+  code = current["weather_code"]
+  return WeatherResponse(
+    city=city,
+    temperature_c=current["temperature_2m"],
+    condition=WMO_CODES.get(code, f"không xác định (mã {code})"),
+    observed_at=current["time"].replace("T", " "),
+  )
 
 
 get_weather_tool: FunctionToolParam = {
-    "type": "function",
-    "name": "get_weather",
-    "description": "Get current weather for a given city",
-    "strict": True,
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "city": {
-                "type": "string",
-                "enum": list(CITIES.keys()),
-                "description": "City name",
-            },
-        },
-        "required": ["city"],
-        "additionalProperties": False,
+  "type": "function",
+  "name": "get_weather",
+  "description": "Get current weather for a given city",
+  "strict": True,
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "city": {
+        "type": "string",
+        "enum": list(CITIES.keys()),
+        "description": "City name",
+      },
     },
+    "required": ["city"],
+    "additionalProperties": False,
+  },
 }
 
 
 def run_bai1(user_prompt: str) -> None:
-    input_list: ResponseInputParam = [{"role": "user", "content": user_prompt}]
-    response = client.responses.create(
-        model=MODEL,
-        input=input_list,
-        tools=[get_weather_tool],
-    )
+  input_list: ResponseInputParam = [{"role": "user", "content": user_prompt}]
+  response = client.responses.create(
+    model=MODEL,
+    input=input_list,
+    tools=[get_weather_tool],
+  )
 
-    calls = [item for item in response.output if item.type == "function_call"]
-    if not calls:
-        print(response.output_text)
-        return
-    call = calls[0]
-    args = json.loads(call.arguments)  # arguments là chuỗi JSON, phải parse
-    result = get_weather(**args)
-    print(f"→ {call.name}({args})")
-    print(f"← {result}")
-    input_list += cast(ResponseInputParam, response.output)
-    input_list.append(
-        {
-            "type": "function_call_output",
-            "call_id": call.call_id,
-            "output": json.dumps(result, ensure_ascii=False),
-        }
-    )
-    final = client.responses.create(
-        model=MODEL,
-        input=input_list,
-        instructions=(
-            "Hãy trả lời ngắn gọn, chỉ 1 câu, không cần giải thích. Nếu có thể, hãy kèm nhiệt độ"
-            " bằng °C."
-        ),
-    )
-    print("\nRESPONSE: ", final.output_text)
+  calls = [item for item in response.output if item.type == "function_call"]
+  if not calls:
+    print(response.output_text)
+    return
+  call = calls[0]
+  args = json.loads(call.arguments)  # arguments là chuỗi JSON, phải parse
+  result = get_weather(**args)
+  print(f"→ {call.name}({args})")
+  print(f"← {result}")
+  input_list += cast(ResponseInputParam, response.output)
+  input_list.append(
+    {
+      "type": "function_call_output",
+      "call_id": call.call_id,
+      "output": json.dumps(result, ensure_ascii=False),
+    }
+  )
+  final = client.responses.create(
+    model=MODEL,
+    input=input_list,
+    instructions=(
+      "Hãy trả lời ngắn gọn, chỉ 1 câu, không cần giải thích. Nếu có thể, hãy kèm nhiệt độ bằng °C."
+    ),
+  )
+  print("\nRESPONSE: ", final.output_text)
 
 
 # ============================================================================
@@ -233,70 +232,70 @@ Status = Literal["delivered", "shipping", "pending", "cancelled"]
 
 
 class OrderItem(TypedDict):
-    order_id: int
-    customer: str
-    product: str
-    quantity: int
-    unit_price: int
-    status: Status
-    created_at: str
+  order_id: int
+  customer: str
+  product: str
+  quantity: int
+  unit_price: int
+  status: Status
+  created_at: str
 
 
 class OrderResponse(TypedDict):
-    orders: list[OrderItem]
-    order_count: int
-    total_amount_vnd: int
+  orders: list[OrderItem]
+  order_count: int
+  total_amount_vnd: int
 
 
 def query_orders(
-    customer: str | None, status: Status | None, csv_name: str = "orders.csv"
+  customer: str | None, status: Status | None, csv_name: str = "orders.csv"
 ) -> OrderResponse:
-    orders_path = Path(__file__).parent / csv_name
-    df = pd.read_csv(orders_path)
+  orders_path = Path(__file__).parent / csv_name
+  df = pd.read_csv(orders_path)
 
-    orders = cast(list[OrderItem], df.to_dict(orient="records"))
+  orders = cast(list[OrderItem], df.to_dict(orient="records"))
 
-    if customer is not None:
-        orders = [o for o in orders if o["customer"].lower() == customer.lower()]
-    if status is not None:
-        orders = [o for o in orders if o["status"] == status]
+  if customer is not None:
+    orders = [o for o in orders if o["customer"].lower() == customer.lower()]
+  if status is not None:
+    orders = [o for o in orders if o["status"] == status]
 
-    order_count = len(orders)
-    total_amount_vnd = sum(o["quantity"] * o["unit_price"] for o in orders)
+  order_count = len(orders)
+  total_amount_vnd = sum(o["quantity"] * o["unit_price"] for o in orders)
 
-    return OrderResponse(
-        orders=orders,
-        order_count=order_count,
-        total_amount_vnd=total_amount_vnd,
-    )
+  return OrderResponse(
+    orders=orders,
+    order_count=order_count,
+    total_amount_vnd=total_amount_vnd,
+  )
 
 
 query_orders_tool: FunctionToolParam = {
-    "type": "function",
-    "name": "query_orders",
-    "description": (
-        "Tra cứu đơn hàng (chỉ đọc), lọc theo tên khách và/hoặc trạng thái. "
-        "Trả về danh sách đơn khớp, số đơn (order_count) và tổng tiền VND (total_amount_vnd)."
-    ),
-    "strict": True,
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "customer": {
-                "type": ["string", "null"],  # null = không lọc theo khách
-                "description": "Tên khách hàng. null = mọi khách.",
-            },
-            "status": {
-                "type": ["string", "null"],  # null = không lọc theo trạng thái
-                "enum": ["delivered", "shipping", "pending", "cancelled", None],  # phải có None
-                "description": "Trạng thái đơn. null = mọi trạng thái.",
-            },
-        },
-        # strict: mọi key phải nằm trong required. "Tùy chọn" = cho phép null ở type,
-        # KHÔNG phải bỏ key khỏi required (~ TS `status: string | null`, không phải `status?:`)
-        "required": ["customer", "status"],
-        "additionalProperties": False,
+  "type": "function",
+  "name": "query_orders",
+  "description": (
+    "Tra cứu đơn hàng (chỉ đọc), lọc theo tên khách và/hoặc trạng thái. "
+    "Trả về danh sách đơn khớp, số đơn (order_count) và tổng tiền VND (total_amount_vnd)."
+  ),
+  "strict": True,
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "customer": {
+        "type": ["string", "null"],  # null = không lọc theo khách
+        "description": "Tên khách hàng. null = mọi khách.",
+      },
+      "status": {
+        "type": ["string", "null"],  # null = không lọc theo trạng thái
+        "enum": ["delivered", "shipping", "pending", "cancelled", None],  # phải có None
+        "description": "Trạng thái đơn. null = mọi trạng thái.",
+      },
     },
+    # strict: mọi key phải nằm trong required. "Tùy chọn" = cho phép null ở type,
+    # KHÔNG phải bỏ key khỏi required (~ TS `status: string | null`, không phải `status?:`)
+    "required": ["customer", "status"],
+    "additionalProperties": False,
+  },
 }
 
 TOOLS_REGISTRY = {"get_weather": get_weather, "query_orders": query_orders}
@@ -305,49 +304,49 @@ MAX_STEPS = 5
 
 
 def run_bai2(user_input: str, parallel_tool_calls: bool = True) -> None:
-    input_list: ResponseInputParam = [{"role": "user", "content": user_input}]
-    # Bài 3 bước 5: cộng dồn token + đo cả hàm để so parallel_tool_calls True vs False
-    total_input_tokens = 0
-    start = time.perf_counter()
-    for step in range(MAX_STEPS):
-        print(f"[step {step + 1}]")
-        response = client.responses.create(
-            model=MODEL,
-            input=input_list,
-            tools=TOOLS,
-            parallel_tool_calls=parallel_tool_calls,
-        )
-        if response.usage is not None:
-            total_input_tokens += response.usage.input_tokens
-            print(f"  input_tokens={response.usage.input_tokens}")
-        calls = [item for item in response.output if item.type == "function_call"]
-        if not calls:
-            print(response.output_text)
-            elapsed = time.perf_counter() - start
-            print(
-                f"\nparallel_tool_calls={parallel_tool_calls}: {step + 1} lời gọi API, "
-                f"tổng input_tokens={total_input_tokens}, {elapsed * 1000:.0f} ms"
-            )
-            return
-        input_list += cast(ResponseInputParam, response.output)
-        for call in calls:
-            args = json.loads(call.arguments)
-            result = TOOLS_REGISTRY[call.name](**args)
-            input_list.append(
-                {
-                    "type": "function_call_output",
-                    "call_id": call.call_id,
-                    "output": json.dumps(
-                        result,
-                        ensure_ascii=False,
-                    ),
-                }
-            )
-            print(f"→ {call.name}({args})")
-            print(f"← {str(result)[:150]}")  # chỉ cắt khi in, LLM vẫn nhận đủ
+  input_list: ResponseInputParam = [{"role": "user", "content": user_input}]
+  # Bài 3 bước 5: cộng dồn token + đo cả hàm để so parallel_tool_calls True vs False
+  total_input_tokens = 0
+  start = time.perf_counter()
+  for step in range(MAX_STEPS):
+    print(f"[step {step + 1}]")
+    response = client.responses.create(
+      model=MODEL,
+      input=input_list,
+      tools=TOOLS,
+      parallel_tool_calls=parallel_tool_calls,
+    )
+    if response.usage is not None:
+      total_input_tokens += response.usage.input_tokens
+      print(f"  input_tokens={response.usage.input_tokens}")
+    calls = [item for item in response.output if item.type == "function_call"]
+    if not calls:
+      print(response.output_text)
+      elapsed = time.perf_counter() - start
+      print(
+        f"\nparallel_tool_calls={parallel_tool_calls}: {step + 1} lời gọi API, "
+        f"tổng input_tokens={total_input_tokens}, {elapsed * 1000:.0f} ms"
+      )
+      return
+    input_list += cast(ResponseInputParam, response.output)
+    for call in calls:
+      args = json.loads(call.arguments)
+      result = TOOLS_REGISTRY[call.name](**args)
+      input_list.append(
+        {
+          "type": "function_call_output",
+          "call_id": call.call_id,
+          "output": json.dumps(
+            result,
+            ensure_ascii=False,
+          ),
+        }
+      )
+      print(f"→ {call.name}({args})")
+      print(f"← {str(result)[:150]}")  # chỉ cắt khi in, LLM vẫn nhận đủ
 
-    print("\n Đã vượt quá MAX_STEPS, dừng vòng lặp.")
-    print(f"Tổng input_tokens={total_input_tokens}")
+  print("\n Đã vượt quá MAX_STEPS, dừng vòng lặp.")
+  print(f"Tổng input_tokens={total_input_tokens}")
 
 
 # ============================================================================
@@ -369,84 +368,83 @@ def run_bai2(user_input: str, parallel_tool_calls: bool = True) -> None:
 
 
 async def get_weather_parallel(city: Literal["Hà Nội", "Đà Nẵng", "TP.HCM"]) -> WeatherResponse:
-    """Get current weather for a given city"""
-    async with httpx2.AsyncClient() as http:
-        res = await http.get(
-            OPEN_METEO_URL,
-            params={
-                **CITIES[city],
-                "current": "temperature_2m,weather_code",
-                "timezone": "Asia/Ho_Chi_Minh",
-            },
-        )
-        response = res.raise_for_status().json()
-
-    current = response["current"]
-    code = current["weather_code"]
-    return WeatherResponse(
-        city=city,
-        temperature_c=current["temperature_2m"],
-        condition=WMO_CODES.get(code, f"không xác định (mã {code})"),
-        observed_at=current["time"].replace("T", " "),
+  """Get current weather for a given city"""
+  async with httpx2.AsyncClient() as http:
+    res = await http.get(
+      OPEN_METEO_URL,
+      params={
+        **CITIES[city],
+        "current": "temperature_2m,weather_code",
+        "timezone": "Asia/Ho_Chi_Minh",
+      },
     )
+    response = res.raise_for_status().json()
+
+  current = response["current"]
+  code = current["weather_code"]
+  return WeatherResponse(
+    city=city,
+    temperature_c=current["temperature_2m"],
+    condition=WMO_CODES.get(code, f"không xác định (mã {code})"),
+    observed_at=current["time"].replace("T", " "),
+  )
 
 
 async def run_tool_parallel(calls: list[ResponseFunctionToolCall]) -> list[WeatherResponse]:
-    return await asyncio.gather(
-        *(get_weather_parallel(**json.loads(call.arguments)) for call in calls)
-    )
+  return await asyncio.gather(
+    *(get_weather_parallel(**json.loads(call.arguments)) for call in calls)
+  )
 
 
 def run_bai3() -> None:
-    input_list: ResponseInputParam = [
-        {"role": "user", "content": "So sánh nhiệt độ Hà Nội, Đà Nẵng và TP.HCM bây giờ"}
-    ]
-    response = client.responses.create(model=MODEL, input=input_list, tools=[get_weather_tool])
-    calls = [item for item in response.output if item.type == "function_call"]
+  input_list: ResponseInputParam = [
+    {"role": "user", "content": "So sánh nhiệt độ Hà Nội, Đà Nẵng và TP.HCM bây giờ"}
+  ]
+  response = client.responses.create(model=MODEL, input=input_list, tools=[get_weather_tool])
+  calls = [item for item in response.output if item.type == "function_call"]
 
-    # Quan sát: 1 response trả về mấy function_call, mỗi cái call_id riêng
-    print(f"Số function_call: {len(calls)}")
-    for call in calls:
-        print(f"- {call.name} | {call.call_id} | {call.arguments}")
-    if response.usage is not None:
-        print(
-            f"input_tokens={response.usage.input_tokens}, "
-            f"output_tokens={response.usage.output_tokens}"
-        )
-
-    if not calls:
-        print(response.output_text)
-        return
-    input_list += cast(ResponseInputParam, response.output)
-
-    # Chỉ đo phần chạy tool (không tính 2 lời gọi LLM) để so tuần tự vs song song
-    start = time.perf_counter()
-    for call in calls:
-        args = json.loads(call.arguments)
-        result = get_weather(**args)
-        input_list.append(
-            {
-                "type": "function_call_output",
-                "call_id": call.call_id,
-                "output": json.dumps(
-                    result,
-                    ensure_ascii=False,
-                ),
-            }
-        )
-    elapsed = time.perf_counter() - start
-    print(f"Tool tuần tự: {elapsed * 1000:.0f} ms")
-
-    start = time.perf_counter()
-    asyncio.run(run_tool_parallel(calls))
-
-    elapsed = time.perf_counter() - start
-    print(f"Tool song song: {elapsed * 1000:.0f} ms")
-
-    final = client.responses.create(
-        model=MODEL, input=input_list, instructions="Hãy trả lời ngắn gọn, dựa trên thông tin đã có"
+  # Quan sát: 1 response trả về mấy function_call, mỗi cái call_id riêng
+  print(f"Số function_call: {len(calls)}")
+  for call in calls:
+    print(f"- {call.name} | {call.call_id} | {call.arguments}")
+  if response.usage is not None:
+    print(
+      f"input_tokens={response.usage.input_tokens}, output_tokens={response.usage.output_tokens}"
     )
-    print("\nRESPONSE Tool tuần tự: ", final.output_text)
+
+  if not calls:
+    print(response.output_text)
+    return
+  input_list += cast(ResponseInputParam, response.output)
+
+  # Chỉ đo phần chạy tool (không tính 2 lời gọi LLM) để so tuần tự vs song song
+  start = time.perf_counter()
+  for call in calls:
+    args = json.loads(call.arguments)
+    result = get_weather(**args)
+    input_list.append(
+      {
+        "type": "function_call_output",
+        "call_id": call.call_id,
+        "output": json.dumps(
+          result,
+          ensure_ascii=False,
+        ),
+      }
+    )
+  elapsed = time.perf_counter() - start
+  print(f"Tool tuần tự: {elapsed * 1000:.0f} ms")
+
+  start = time.perf_counter()
+  asyncio.run(run_tool_parallel(calls))
+
+  elapsed = time.perf_counter() - start
+  print(f"Tool song song: {elapsed * 1000:.0f} ms")
+
+  final = client.responses.create(
+    model=MODEL, input=input_list, instructions="Hãy trả lời ngắn gọn, dựa trên thông tin đã có"
+  )
+  print("\nRESPONSE Tool tuần tự: ", final.output_text)
 
 
 # ============================================================================
@@ -475,28 +473,28 @@ def run_bai3() -> None:
 
 
 def get_weather_broken(city: Literal["Hà Nội", "Đà Nẵng", "TP.HCM"]) -> WeatherResponse:
-    """Get current weather for a given city"""
-    response = (
-        httpx2.get(
-            OPEN_METEO_URL,
-            params={
-                **CITIES[city],
-                "current": "temperature_2m,weather_code",
-                "timezone": "Asia/Ho_Chi_Minh",
-            },
-            timeout=0.0001,
-        )
-        .raise_for_status()
-        .json()
+  """Get current weather for a given city"""
+  response = (
+    httpx2.get(
+      OPEN_METEO_URL,
+      params={
+        **CITIES[city],
+        "current": "temperature_2m,weather_code",
+        "timezone": "Asia/Ho_Chi_Minh",
+      },
+      timeout=0.0001,
     )
-    current = response["current"]
-    code = current["weather_code"]
-    return WeatherResponse(
-        city=city,
-        temperature_c=current["temperature_2m"],
-        condition=WMO_CODES.get(code, f"không xác định (mã {code})"),
-        observed_at=current["time"].replace("T", " "),
-    )
+    .raise_for_status()
+    .json()
+  )
+  current = response["current"]
+  code = current["weather_code"]
+  return WeatherResponse(
+    city=city,
+    temperature_c=current["temperature_2m"],
+    condition=WMO_CODES.get(code, f"không xác định (mã {code})"),
+    observed_at=current["time"].replace("T", " "),
+  )
 
 
 BROKEN_TOOLS_REGISTRY = {"get_weather": get_weather_broken, "query_orders": query_orders}
@@ -504,89 +502,87 @@ BROKEN_TOOLS_REGISTRY = {"get_weather": get_weather_broken, "query_orders": quer
 # Bài 4b: chỉ khai báo schema, CỐ Ý không có hàm Python + không có trong registry
 # → model thấy tool trong "menu" và gọi, nhưng execute_call không tìm thấy → "Unknown tool"
 get_stock_price_tool: FunctionToolParam = {
-    "type": "function",
-    "name": "get_stock_price",
-    "description": "Tra giá cổ phiếu hiện tại trên sàn chứng khoán Việt Nam theo mã cổ phiếu.",
-    "strict": True,
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "symbol": {
-                "type": "string",
-                "description": "Mã cổ phiếu, viết hoa. Ví dụ: VNM, FPT, VCB.",
-            },
-        },
-        "required": ["symbol"],
-        "additionalProperties": False,
+  "type": "function",
+  "name": "get_stock_price",
+  "description": "Tra giá cổ phiếu hiện tại trên sàn chứng khoán Việt Nam theo mã cổ phiếu.",
+  "strict": True,
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "symbol": {
+        "type": "string",
+        "description": "Mã cổ phiếu, viết hoa. Ví dụ: VNM, FPT, VCB.",
+      },
     },
+    "required": ["symbol"],
+    "additionalProperties": False,
+  },
 }
 
 INJECTED_REGISTRY = {
-    **TOOLS_REGISTRY,
-    "query_orders": partial(query_orders, csv_name="orders_injected.csv"),
+  **TOOLS_REGISTRY,
+  "query_orders": partial(query_orders, csv_name="orders_injected.csv"),
 }
 
 
 # TODO: viết code ở đây
 def execute_call(call: ResponseFunctionToolCall, registry: dict[str, Callable[..., Any]]) -> str:
-    func = registry.get(call.name)
-    if func is None:
-        print(f"[tool error] unknown tool | {call.name} | {call.arguments}")
-        return json.dumps({"error": f"Unknown tool: {call.name}"}, ensure_ascii=False)
+  func = registry.get(call.name)
+  if func is None:
+    print(f"[tool error] unknown tool | {call.name} | {call.arguments}")
+    return json.dumps({"error": f"Unknown tool: {call.name}"}, ensure_ascii=False)
 
-    try:
-        args = json.loads(call.arguments)
-        result = func(**args)
-        return json.dumps(result, ensure_ascii=False)
+  try:
+    args = json.loads(call.arguments)
+    result = func(**args)
+    return json.dumps(result, ensure_ascii=False)
 
-    except json.JSONDecodeError:
-        print(f"[tool error] JSON hỏng | {call.name} | {call.arguments}")
-        return json.dumps({"error": "arguments không phải JSON hợp lệ"}, ensure_ascii=False)
-    except Exception as e:
-        print(f"[tool error] {type(e).__name__} | {call.name} | {call.arguments} | {e}")
-        return json.dumps({"error": f"Tool {call.name} lỗi, thử lại sau"}, ensure_ascii=False)
+  except json.JSONDecodeError:
+    print(f"[tool error] JSON hỏng | {call.name} | {call.arguments}")
+    return json.dumps({"error": "arguments không phải JSON hợp lệ"}, ensure_ascii=False)
+  except Exception as e:
+    print(f"[tool error] {type(e).__name__} | {call.name} | {call.arguments} | {e}")
+    return json.dumps({"error": f"Tool {call.name} lỗi, thử lại sau"}, ensure_ascii=False)
 
 
 def run_bai4(
-    user_input: str, tools: list[FunctionToolParam], registry: dict[str, Callable[..., Any]]
+  user_input: str, tools: list[FunctionToolParam], registry: dict[str, Callable[..., Any]]
 ) -> None:
-    input_list: ResponseInputParam = [{"role": "user", "content": user_input}]
-    total_input_tokens = 0
-    start = time.perf_counter()
+  input_list: ResponseInputParam = [{"role": "user", "content": user_input}]
+  total_input_tokens = 0
+  start = time.perf_counter()
 
-    for step in range(MAX_STEPS):
-        print(f"[step {step + 1}]")
-        response = client.responses.create(
-            model=MODEL,
-            input=input_list,
-            tools=tools,
-        )
-        if response.usage is not None:
-            total_input_tokens += response.usage.input_tokens
-            print(f"  input_tokens={response.usage.input_tokens}")
-        calls = [item for item in response.output if item.type == "function_call"]
-        if not calls:
-            print(response.output_text)
-            elapsed = time.perf_counter() - start
-            print(f"tổng input_tokens={total_input_tokens}, {elapsed * 1000:.0f} ms")
-            return
-        input_list += cast(ResponseInputParam, response.output)
-        for call in calls:
-            output = execute_call(call, registry)
-            input_list.append(
-                {"type": "function_call_output", "call_id": call.call_id, "output": output}
-            )
-            print(f"→ {call.name}({call.arguments})")
-            print(f"← {output[:150]}")  # chỉ cắt khi in, LLM vẫn nhận đủ
-
-    # Bài 4d: hết lượt → log cho dev + câu trả lời cố định cho user (không gọi LLM thêm,
-    # hệ thống đang lỗi nên không phụ thuộc LLM nữa)
-    elapsed = time.perf_counter() - start
-    print(
-        f"[guard] chạm MAX_STEPS={MAX_STEPS}, dừng vòng lặp | "
-        f"tổng input_tokens={total_input_tokens}, {elapsed * 1000:.0f} ms"
+  for step in range(MAX_STEPS):
+    print(f"[step {step + 1}]")
+    response = client.responses.create(
+      model=MODEL,
+      input=input_list,
+      tools=tools,
     )
-    print("Xin lỗi, mình chưa lấy được dữ liệu sau nhiều lần thử. Bạn thử lại sau ít phút nhé.")
+    if response.usage is not None:
+      total_input_tokens += response.usage.input_tokens
+      print(f"  input_tokens={response.usage.input_tokens}")
+    calls = [item for item in response.output if item.type == "function_call"]
+    if not calls:
+      print(response.output_text)
+      elapsed = time.perf_counter() - start
+      print(f"tổng input_tokens={total_input_tokens}, {elapsed * 1000:.0f} ms")
+      return
+    input_list += cast(ResponseInputParam, response.output)
+    for call in calls:
+      output = execute_call(call, registry)
+      input_list.append({"type": "function_call_output", "call_id": call.call_id, "output": output})
+      print(f"→ {call.name}({call.arguments})")
+      print(f"← {output[:150]}")  # chỉ cắt khi in, LLM vẫn nhận đủ
+
+  # Bài 4d: hết lượt → log cho dev + câu trả lời cố định cho user (không gọi LLM thêm,
+  # hệ thống đang lỗi nên không phụ thuộc LLM nữa)
+  elapsed = time.perf_counter() - start
+  print(
+    f"[guard] chạm MAX_STEPS={MAX_STEPS}, dừng vòng lặp | "
+    f"tổng input_tokens={total_input_tokens}, {elapsed * 1000:.0f} ms"
+  )
+  print("Xin lỗi, mình chưa lấy được dữ liệu sau nhiều lần thử. Bạn thử lại sau ít phút nhé.")
 
 
 # ============================================================================
@@ -611,221 +607,217 @@ def run_bai4(
 
 # TODO: viết code ở đây
 def measure_tool_schema_tokens() -> None:
-    with_tools = client.responses.create(model=MODEL, input="Xin chào", tools=TOOLS)
+  with_tools = client.responses.create(model=MODEL, input="Xin chào", tools=TOOLS)
 
-    without_tools = client.responses.create(model=MODEL, input="Xin chào")
+  without_tools = client.responses.create(model=MODEL, input="Xin chào")
 
-    if with_tools.usage is None or without_tools.usage is None:
-        print("Không có usage")
-        return
+  if with_tools.usage is None or without_tools.usage is None:
+    print("Không có usage")
+    return
 
-    tokens_with = with_tools.usage.input_tokens
-    tokens_without = without_tools.usage.input_tokens
+  tokens_with = with_tools.usage.input_tokens
+  tokens_without = without_tools.usage.input_tokens
 
-    print(f"Có tools:    {tokens_with} input token")
-    print(f"Không tools: {tokens_without} input token")
-    print(f"Chênh lệch (tool schema): {tokens_with - tokens_without} token")
+  print(f"Có tools:    {tokens_with} input token")
+  print(f"Không tools: {tokens_without} input token")
+  print(f"Chênh lệch (tool schema): {tokens_with - tokens_without} token")
 
 
 # Giá USD / 1M token (input, output), tra ngày 2026-09-30 (chép từ Buổi 6)
 # Nguồn: developers.openai.com/api/docs/pricing
 PRICES: dict[str, tuple[float, float]] = {
-    "gpt-4.1-nano": (0.10, 0.40),
-    "gpt-4o-mini": (0.15, 0.60),
-    "gpt-6-luna": (0.10, 0.50),
+  "gpt-4.1-nano": (0.10, 0.40),
+  "gpt-4o-mini": (0.15, 0.60),
+  "gpt-6-luna": (0.10, 0.50),
 }
 
 
 def cost_usd(
-    input_tokens: int, output_tokens: int, price_in_per_mtok: float, price_out_per_mtok: float
+  input_tokens: int, output_tokens: int, price_in_per_mtok: float, price_out_per_mtok: float
 ) -> float:
-    return (input_tokens / 1_000_000) * price_in_per_mtok + (
-        output_tokens / 1_000_000
-    ) * price_out_per_mtok
+  return (input_tokens / 1_000_000) * price_in_per_mtok + (
+    output_tokens / 1_000_000
+  ) * price_out_per_mtok
 
 
 @dataclass
 class TurnResult:
-    reply: str
-    input_tokens: int
-    output_tokens: int
+  reply: str
+  input_tokens: int
+  output_tokens: int
 
 
 def chat_turn_with_tools(
-    history: ResponseInputParam,
-    user_input: str,
-    tools: list[FunctionToolParam],
-    registry: dict[str, Callable[..., Any]],
-    instruction: str,
+  history: ResponseInputParam,
+  user_input: str,
+  tools: list[FunctionToolParam],
+  registry: dict[str, Callable[..., Any]],
+  instruction: str,
 ) -> TurnResult:
-    history.append({"role": "user", "content": user_input})
-    total_in = 0
-    total_out = 0
+  history.append({"role": "user", "content": user_input})
+  total_in = 0
+  total_out = 0
 
-    for _ in range(MAX_STEPS):
-        response = client.responses.create(
-            model=MODEL, input=history, tools=tools, instructions=instruction
-        )
-        if response.usage is not None:
-            total_in += response.usage.input_tokens
-            total_out += response.usage.output_tokens
+  for _ in range(MAX_STEPS):
+    response = client.responses.create(
+      model=MODEL, input=history, tools=tools, instructions=instruction
+    )
+    if response.usage is not None:
+      total_in += response.usage.input_tokens
+      total_out += response.usage.output_tokens
 
-        calls = [item for item in response.output if item.type == "function_call"]
-        if not calls:
-            reply = response.output_text
-            history.append({"role": "assistant", "content": reply})
-            return TurnResult(
-                reply=reply,
-                input_tokens=total_in,
-                output_tokens=total_out,
-            )
-        history.extend(cast(ResponseInputParam, response.output))
-        for call in calls:
-            output = execute_call(call, registry)
-            history.append(
-                {"type": "function_call_output", "call_id": call.call_id, "output": output}
-            )
-            print(f"  → {call.name}({call.arguments})")
-            print(f"  ← {output[:150]}")
-
-    reply = "Xin lỗi, mình chưa lấy được dữ liệu sau nhiều lần thử. Bạn thử lại sau ít phút nhé."
-    print(f"  [guard] chạm MAX_STEPS={MAX_STEPS}")
-    history.append({"role": "assistant", "content": reply})
-    return TurnResult(
+    calls = [item for item in response.output if item.type == "function_call"]
+    if not calls:
+      reply = response.output_text
+      history.append({"role": "assistant", "content": reply})
+      return TurnResult(
         reply=reply,
         input_tokens=total_in,
         output_tokens=total_out,
-    )
+      )
+    history.extend(cast(ResponseInputParam, response.output))
+    for call in calls:
+      output = execute_call(call, registry)
+      history.append({"type": "function_call_output", "call_id": call.call_id, "output": output})
+      print(f"  → {call.name}({call.arguments})")
+      print(f"  ← {output[:150]}")
+
+  reply = "Xin lỗi, mình chưa lấy được dữ liệu sau nhiều lần thử. Bạn thử lại sau ít phút nhé."
+  print(f"  [guard] chạm MAX_STEPS={MAX_STEPS}")
+  history.append({"role": "assistant", "content": reply})
+  return TurnResult(
+    reply=reply,
+    input_tokens=total_in,
+    output_tokens=total_out,
+  )
 
 
 def bai5_run() -> None:
-    history: ResponseInputParam = []
-    print(
-        "Bắt đầu trò chuyện với OpenAI Responses API"
-        " (Gõ '/exit' để thoát)\n"
-        " (Gõ '/system <nội dung>' để đổi system prompt)\n"
-        " (Gõ '/reset' để xóa lịch sử)\n"
-        " (Gõ '/history' để in lịch sử)\n"
-        " (Gõ '/stats' để xem tổng token và cost)\n"
-    )
+  history: ResponseInputParam = []
+  print(
+    "Bắt đầu trò chuyện với OpenAI Responses API"
+    " (Gõ '/exit' để thoát)\n"
+    " (Gõ '/system <nội dung>' để đổi system prompt)\n"
+    " (Gõ '/reset' để xóa lịch sử)\n"
+    " (Gõ '/history' để in lịch sử)\n"
+    " (Gõ '/stats' để xem tổng token và cost)\n"
+  )
 
-    system: str = "Bạn là trợ lý trả lời chính xác và ngắn gọn bằng tiếng Việt"
-    cmd = {"/reset", "/history", "/exit", "/stats"}
-    price_in, price_out = PRICES[MODEL]
-    turns = 0
-    total_input = 0
-    total_output = 0
-    total_cost = 0.0
-    try:
-        while True:
-            user_msg = input("Bạn: ").strip()
-            if not user_msg:
-                continue
-            if user_msg.startswith("/") and user_msg not in cmd:
-                if user_msg.startswith("/system "):
-                    system = user_msg[len("/system ") :].strip()
-                    print("Đã đổi system prompt.")
-                else:
-                    print("lệnh không hợp lệ, thử lệnh khác ")
-                continue
+  system: str = "Bạn là trợ lý trả lời chính xác và ngắn gọn bằng tiếng Việt"
+  cmd = {"/reset", "/history", "/exit", "/stats"}
+  price_in, price_out = PRICES[MODEL]
+  turns = 0
+  total_input = 0
+  total_output = 0
+  total_cost = 0.0
+  try:
+    while True:
+      user_msg = input("Bạn: ").strip()
+      if not user_msg:
+        continue
+      if user_msg.startswith("/") and user_msg not in cmd:
+        if user_msg.startswith("/system "):
+          system = user_msg[len("/system ") :].strip()
+          print("Đã đổi system prompt.")
+        else:
+          print("lệnh không hợp lệ, thử lệnh khác ")
+        continue
 
-            match user_msg:
-                case "/exit":
-                    break
-                case "/reset":
-                    # Chỉ xóa lịch sử, số liệu /stats tính từ đầu phiên nên giữ nguyên
-                    history = []
-                    print("Đã xóa lịch sử (số liệu /stats vẫn giữ).")
-                case "/history":
-                    if not history:
-                        print("(lịch sử trống)")
-                    for i, m in enumerate(history, start=1):
-                        if isinstance(m, dict):
-                            kind = m.get("role") or m.get("type")
-                            text = str(m.get("content") or m.get("output") or "")
-                        else:
-                            # item SDK (object Pydantic) lấy từ response.output, vd function_call
-                            # → không có .get(), đọc bằng getattr
-                            kind = getattr(m, "type", "?")
-                            text = f"{getattr(m, 'name', '')}({getattr(m, 'arguments', '')})"
-                        text = text.replace("\n", " ")
-                        if len(text) > 60:
-                            text = text[:60] + "..."
-                        print(f"{i}. {kind}: {text}")
-                case "/stats":
-                    print(
-                        f"Số lượt: {turns} | Tổng input: {total_input} token"
-                        f" | Tổng output: {total_output} token | Tổng cost: ${total_cost:.6f}"
-                    )
-                case _:
-                    # result = chat_turn_with_usage(history, user_msg, system)
-                    # history.append({"role": "user", "content": user_msg})
-                    # history.append({"role": "assistant", "content": result.reply})
-                    result = chat_turn_with_tools(history, user_msg, TOOLS, TOOLS_REGISTRY, system)
-                    print(f"Bot: {result.reply}")
+      match user_msg:
+        case "/exit":
+          break
+        case "/reset":
+          # Chỉ xóa lịch sử, số liệu /stats tính từ đầu phiên nên giữ nguyên
+          history = []
+          print("Đã xóa lịch sử (số liệu /stats vẫn giữ).")
+        case "/history":
+          if not history:
+            print("(lịch sử trống)")
+          for i, m in enumerate(history, start=1):
+            if isinstance(m, dict):
+              kind = m.get("role") or m.get("type")
+              text = str(m.get("content") or m.get("output") or "")
+            else:
+              # item SDK (object Pydantic) lấy từ response.output, vd function_call
+              # → không có .get(), đọc bằng getattr
+              kind = getattr(m, "type", "?")
+              text = f"{getattr(m, 'name', '')}({getattr(m, 'arguments', '')})"
+            text = text.replace("\n", " ")
+            if len(text) > 60:
+              text = text[:60] + "..."
+            print(f"{i}. {kind}: {text}")
+        case "/stats":
+          print(
+            f"Số lượt: {turns} | Tổng input: {total_input} token"
+            f" | Tổng output: {total_output} token | Tổng cost: ${total_cost:.6f}"
+          )
+        case _:
+          # result = chat_turn_with_usage(history, user_msg, system)
+          # history.append({"role": "user", "content": user_msg})
+          # history.append({"role": "assistant", "content": result.reply})
+          result = chat_turn_with_tools(history, user_msg, TOOLS, TOOLS_REGISTRY, system)
+          print(f"Bot: {result.reply}")
 
-                    turn_cost = cost_usd(
-                        result.input_tokens, result.output_tokens, price_in, price_out
-                    )
-                    turns += 1
-                    total_input += result.input_tokens
-                    total_output += result.output_tokens
-                    total_cost += turn_cost
-                    print(
-                        f"[lượt {turns}] in: {result.input_tokens} | out: {result.output_tokens}"
-                        f" | cost: ${turn_cost:.6f} | tổng: ${total_cost:.6f}"
-                    )
+          turn_cost = cost_usd(result.input_tokens, result.output_tokens, price_in, price_out)
+          turns += 1
+          total_input += result.input_tokens
+          total_output += result.output_tokens
+          total_cost += turn_cost
+          print(
+            f"[lượt {turns}] in: {result.input_tokens} | out: {result.output_tokens}"
+            f" | cost: ${turn_cost:.6f} | tổng: ${total_cost:.6f}"
+          )
 
-    except (EOFError, KeyboardInterrupt):
-        print()
+  except (EOFError, KeyboardInterrupt):
+    print()
 
-    print("Kết thúc trò chuyện với OpenAI Responses API")
+  print("Kết thúc trò chuyện với OpenAI Responses API")
 
 
 if __name__ == "__main__":
-    # run_bai1("Hà Nội bây giờ bao nhiêu độ?")
+  # run_bai1("Hà Nội bây giờ bao nhiêu độ?")
 
-    # run_bai2("An đã đặt bao nhiêu đơn, tổng bao nhiêu tiền?")
-    # run_bai2("Có đơn nào đang pending không?")
-    # run_bai2("Đơn nào bị huỷ, và trời Đà Nẵng giờ thế nào?")
+  # run_bai2("An đã đặt bao nhiêu đơn, tổng bao nhiêu tiền?")
+  # run_bai2("Có đơn nào đang pending không?")
+  # run_bai2("Đơn nào bị huỷ, và trời Đà Nẵng giờ thế nào?")
 
-    # run_bai3()
+  # run_bai3()
 
-    # Bài 3 bước 5: cùng câu hỏi, chỉ khác parallel_tool_calls
-    # run_bai2("So sánh nhiệt độ Hà Nội, Đà Nẵng và TP.HCM bây giờ.")
-    # run_bai2("So sánh nhiệt độ Hà Nội, Đà Nẵng và TP.HCM bây giờ.", parallel_tool_calls=False)
+  # Bài 3 bước 5: cùng câu hỏi, chỉ khác parallel_tool_calls
+  # run_bai2("So sánh nhiệt độ Hà Nội, Đà Nẵng và TP.HCM bây giờ.")
+  # run_bai2("So sánh nhiệt độ Hà Nội, Đà Nẵng và TP.HCM bây giờ.", parallel_tool_calls=False)
 
-    # run_bai4("Hà Nội bây giờ bao nhiêu độ?", TOOLS, TOOLS_REGISTRY)
+  # run_bai4("Hà Nội bây giờ bao nhiêu độ?", TOOLS, TOOLS_REGISTRY)
 
-    # Bài 4a: tool lỗi giữa chừng (timeout)
-    # run_bai4("Hà Nội bây giờ bao nhiêu độ?", TOOLS, BROKEN_TOOLS_REGISTRY)
+  # Bài 4a: tool lỗi giữa chừng (timeout)
+  # run_bai4("Hà Nội bây giờ bao nhiêu độ?", TOOLS, BROKEN_TOOLS_REGISTRY)
 
-    # Bài 4b: tool có trong tools nhưng không có trong registry
-    # run_bai4(
-    #     "Giá cổ phiếu VNM hôm nay bao nhiêu?", [*TOOLS, get_stock_price_tool], TOOLS_REGISTRY
-    # )
+  # Bài 4b: tool có trong tools nhưng không có trong registry
+  # run_bai4(
+  #     "Giá cổ phiếu VNM hôm nay bao nhiêu?", [*TOOLS, get_stock_price_tool], TOOLS_REGISTRY
+  # )
 
-    # Bài 4d: tool luôn lỗi + ép model thử lại → MAX_STEPS có chặn được không?
-    # run_bai4(
-    #     "Hà Nội bây giờ bao nhiêu độ? Nếu tool lỗi thì cứ gọi lại đến khi được.",
-    #     TOOLS,
-    #     BROKEN_TOOLS_REGISTRY,
-    # )
+  # Bài 4d: tool luôn lỗi + ép model thử lại → MAX_STEPS có chặn được không?
+  # run_bai4(
+  #     "Hà Nội bây giờ bao nhiêu độ? Nếu tool lỗi thì cứ gọi lại đến khi được.",
+  #     TOOLS,
+  #     BROKEN_TOOLS_REGISTRY,
+  # )
 
-    # Bài 4 — prompt injection qua CSV: mốc vs nhiễm
-    # run_bai4("An đã đặt bao nhiêu đơn, tổng bao nhiêu tiền?", TOOLS, TOOLS_REGISTRY)
-    # run_bai4("An đã đặt bao nhiêu đơn, tổng bao nhiêu tiền?", TOOLS, INJECTED_REGISTRY)
+  # Bài 4 — prompt injection qua CSV: mốc vs nhiễm
+  # run_bai4("An đã đặt bao nhiêu đơn, tổng bao nhiêu tiền?", TOOLS, TOOLS_REGISTRY)
+  # run_bai4("An đã đặt bao nhiêu đơn, tổng bao nhiêu tiền?", TOOLS, INJECTED_REGISTRY)
 
-    # Bài 5.2: test 2 lượt dùng CHUNG 1 history (đã chạy xong, thay bằng bai5_run)
-    # history: ResponseInputParam = []
-    #
-    # r1 = chat_turn_with_tools(history, "An có mấy đơn?", TOOLS, TOOLS_REGISTRY)
-    # print(f"Bot: {r1.reply}")
-    # print(f"[lượt 1] in: {r1.input_tokens} | out: {r1.output_tokens}\n")
-    #
-    # r2 = chat_turn_with_tools(history, "Còn Bình?", TOOLS, TOOLS_REGISTRY)
-    # print(f"Bot: {r2.reply}")
-    # print(f"[lượt 2] in: {r2.input_tokens} | out: {r2.output_tokens}")
+  # Bài 5.2: test 2 lượt dùng CHUNG 1 history (đã chạy xong, thay bằng bai5_run)
+  # history: ResponseInputParam = []
+  #
+  # r1 = chat_turn_with_tools(history, "An có mấy đơn?", TOOLS, TOOLS_REGISTRY)
+  # print(f"Bot: {r1.reply}")
+  # print(f"[lượt 1] in: {r1.input_tokens} | out: {r1.output_tokens}\n")
+  #
+  # r2 = chat_turn_with_tools(history, "Còn Bình?", TOOLS, TOOLS_REGISTRY)
+  # print(f"Bot: {r2.reply}")
+  # print(f"[lượt 2] in: {r2.input_tokens} | out: {r2.output_tokens}")
 
-    # Bài 5.3: CLI chatbot có tools
-    bai5_run()
+  # Bài 5.3: CLI chatbot có tools
+  bai5_run()

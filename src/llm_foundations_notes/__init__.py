@@ -1,2 +1,2 @@
 def main() -> None:
-    print("Hello from llm-foundations-notes!")
+  print("Hello from llm-foundations-notes!")

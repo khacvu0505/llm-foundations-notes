@@ -556,16 +556,16 @@ _(Trả lời 2026-10-09, Claude ghép + ví dụ từ bài)_
 
 ```python
 get_weather_tool: FunctionToolParam = {
-    "type": "function",
-    "name": "get_weather",                                   # ① tên
-    "description": "Get current weather for a given city",  # ② mô tả
-    "strict": True,                                          # ④
-    "parameters": {                                          # ③ JSON Schema của args
-        "type": "object",
-        "properties": {"city": {"type": "string", "enum": ["Hà Nội", "Đà Nẵng", "TP.HCM"]}},
-        "required": ["city"],
-        "additionalProperties": False,
-    },
+  "type": "function",
+  "name": "get_weather",  # ① tên
+  "description": "Get current weather for a given city",  # ② mô tả
+  "strict": True,  # ④
+  "parameters": {  # ③ JSON Schema của args
+    "type": "object",
+    "properties": {"city": {"type": "string", "enum": ["Hà Nội", "Đà Nẵng", "TP.HCM"]}},
+    "required": ["city"],
+    "additionalProperties": False,
+  },
 }
 ```
 

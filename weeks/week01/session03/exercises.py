@@ -43,14 +43,14 @@ client = OpenAI()  # tạo client, dùng key từ biến môi trường OPENAI_A
 
 # TODO: viết code ở đây
 def chat_openai(system: str, user: str) -> str:
-    response = client.responses.create(
-        model="gpt-6-luna",
-        input=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-    )
-    return response.output_text
+  response = client.responses.create(
+    model="gpt-6-luna",
+    input=[
+      {"role": "system", "content": system},
+      {"role": "user", "content": user},
+    ],
+  )
+  return response.output_text
 
 
 # ============================================================================
@@ -71,11 +71,11 @@ def chat_openai(system: str, user: str) -> str:
 
 # TODO: viết code ở đây
 def chat_history(system: str, messages: ResponseInputParam) -> str:
-    response = client.responses.create(
-        model="gpt-6-luna", input=[{"role": "system", "content": system}, *messages]
-    )
+  response = client.responses.create(
+    model="gpt-6-luna", input=[{"role": "system", "content": system}, *messages]
+  )
 
-    return response.output_text
+  return response.output_text
 
 
 # ============================================================================
@@ -114,61 +114,61 @@ PROMPT_LONG = "Giới thiệu Đà Lạt trong 3 câu"  # dùng cho 3.3: câu tr
 
 
 def ask(
-    prompt: str,
-    *,
-    temperature: float | Omit = omit,
-    top_p: float | Omit = omit,
-    max_output_tokens: int | Omit = omit,
+  prompt: str,
+  *,
+  temperature: float | Omit = omit,
+  top_p: float | Omit = omit,
+  max_output_tokens: int | Omit = omit,
 ) -> Response:
-    """Gọi API 1 lần, trả về NGUYÊN response (không chỉ text)."""
-    response = client.responses.create(
-        model=MODEL_BAI3,
-        input=prompt,
-        temperature=temperature,
-        top_p=top_p,
-        max_output_tokens=max_output_tokens,
-    )
-    return response
+  """Gọi API 1 lần, trả về NGUYÊN response (không chỉ text)."""
+  response = client.responses.create(
+    model=MODEL_BAI3,
+    input=prompt,
+    temperature=temperature,
+    top_p=top_p,
+    max_output_tokens=max_output_tokens,
+  )
+  return response
 
 
 def show(label: str, response: Response) -> None:
-    output_text = response.output_text
-    status = response.status
-    incomplete_details = response.incomplete_details
-    output_tokens = response.usage.output_tokens if response.usage else "N/A"
-    print(f"{label}: {output_text}")
-    print(f"    Status: {status}, Incomplete: {incomplete_details}, Tokens: {output_tokens}")
+  output_text = response.output_text
+  status = response.status
+  incomplete_details = response.incomplete_details
+  output_tokens = response.usage.output_tokens if response.usage else "N/A"
+  print(f"{label}: {output_text}")
+  print(f"    Status: {status}, Incomplete: {incomplete_details}, Tokens: {output_tokens}")
 
 
 def run_bai3() -> None:
-    # 3.1 temperature=0, chạy 3 lần
-    for _ in range(3):
-        response = ask(PROMPT_BAI3, temperature=0)
-        show("Temp=0", response)
+  # 3.1 temperature=0, chạy 3 lần
+  for _ in range(3):
+    response = ask(PROMPT_BAI3, temperature=0)
+    show("Temp=0", response)
 
-    # 3.2 temperature=1, chạy 3 lần
-    for _ in range(3):
-        response = ask(PROMPT_BAI3, temperature=1)
-        show("Temp=1", response)
+  # 3.2 temperature=1, chạy 3 lần
+  for _ in range(3):
+    response = ask(PROMPT_BAI3, temperature=1)
+    show("Temp=1", response)
 
-    # 3.3 max_output_tokens=16, chạy 1 lần. Để ý output_text và status.
-    response = ask(PROMPT_LONG, max_output_tokens=16)
-    show("MaxTokens=16", response)
+  # 3.3 max_output_tokens=16, chạy 1 lần. Để ý output_text và status.
+  response = ask(PROMPT_LONG, max_output_tokens=16)
+  show("MaxTokens=16", response)
 
-    # 3.4 top_p=0.1 rồi top_p=1.0, mỗi mức 3 lần
-    response = ask(PROMPT_BAI3, top_p=0.1)
-    show("TopP=0.1", response)
+  # 3.4 top_p=0.1 rồi top_p=1.0, mỗi mức 3 lần
+  response = ask(PROMPT_BAI3, top_p=0.1)
+  show("TopP=0.1", response)
 
-    response = ask(PROMPT_BAI3, top_p=1.0)
-    show("TopP=1.0", response)
+  response = ask(PROMPT_BAI3, top_p=1.0)
+  show("TopP=1.0", response)
 
-    # 3.5 (tùy chọn) truyền CẢ temperature và top_p, xem API có báo lỗi không.
-    #     Bọc lời gọi trong try/except openai.BadRequestError as e, rồi in e.
-    response = ask(PROMPT_BAI3, temperature=0.5, top_p=0.5)
-    show("Temp=0.5, TopP=0.5", response)
+  # 3.5 (tùy chọn) truyền CẢ temperature và top_p, xem API có báo lỗi không.
+  #     Bọc lời gọi trong try/except openai.BadRequestError as e, rồi in e.
+  response = ask(PROMPT_BAI3, temperature=0.5, top_p=0.5)
+  show("Temp=0.5, TopP=0.5", response)
 
-    response = ask(PROMPT_BAI3, temperature=1, top_p=1)
-    show("Temp=1, TopP=1", response)
+  response = ask(PROMPT_BAI3, temperature=1, top_p=1)
+  show("Temp=1, TopP=1", response)
 
 
 # Trong main: comment lời gọi bài 1, bài 2, rồi gọi run_bai3().
@@ -195,9 +195,9 @@ def run_bai3() -> None:
 # TODO: viết code ở đây
 def count_token(text: str, encoding_name: str = "o200k_base") -> int:
 
-    encoding = tiktoken.get_encoding(encoding_name)
-    tokens = encoding.encode(text)
-    return len(tokens)
+  encoding = tiktoken.get_encoding(encoding_name)
+  tokens = encoding.encode(text)
+  return len(tokens)
 
 
 # ============================================================================
@@ -224,63 +224,63 @@ PRICE_OUT_PER_MTOK = 0.60
 
 
 def cost_usd(
-    input_tokens: int, output_tokens: int, price_in_per_mtok: float, price_out_per_mtok: float
+  input_tokens: int, output_tokens: int, price_in_per_mtok: float, price_out_per_mtok: float
 ) -> float:
-    return (input_tokens / 1_000_000) * price_in_per_mtok + (
-        output_tokens / 1_000_000
-    ) * price_out_per_mtok
+  return (input_tokens / 1_000_000) * price_in_per_mtok + (
+    output_tokens / 1_000_000
+  ) * price_out_per_mtok
 
 
 if __name__ == "__main__":
-    # test bài 1
-    print(chat_openai("You are a helpful assistant.", "What is python?"))
+  # test bài 1
+  print(chat_openai("You are a helpful assistant.", "What is python?"))
 
-    # test bài 2
-    # print(chat_history("You're helpful asistant", [{"role": "user", "content": "What is my name"}]))
-    # print(
-    #     chat_history(
-    #         "You're helpful asistant",
-    #         [
-    #             {"role": "user", "content": "My name is An."},
-    #             {"role": "assistant", "content": "Hello An! How can I help you today?"},
-    #             {"role": "user", "content": "What is my name?"},
-    #         ],
-    #     )
-    # )
+  # test bài 2
+  # print(chat_history("You're helpful asistant", [{"role": "user", "content": "What is my name"}]))
+  # print(
+  #     chat_history(
+  #         "You're helpful asistant",
+  #         [
+  #             {"role": "user", "content": "My name is An."},
+  #             {"role": "assistant", "content": "Hello An! How can I help you today?"},
+  #             {"role": "user", "content": "What is my name?"},
+  #         ],
+  #     )
+  # )
 
-    # test bài 3
-    # run_bai3()
+  # test bài 3
+  # run_bai3()
 
-    # test bài 4
-    # pairs = [
-    #     ("Xin chào, hôm nay trời đẹp quá.", "Hello, the weather is so nice today."),
-    #     (
-    #         "Tôi muốn đặt một bàn cho bốn người vào tối thứ Bảy.",
-    #         "I would like to book a table for four people on Saturday evening.",
-    #     ),
-    #     (
-    #         "Mô hình ngôn ngữ lớn dự đoán token tiếp theo dựa trên ngữ cảnh.",
-    #         "Large language models predict the next token based on context.",
-    #     ),
-    # ]
-    # for vi, en in pairs:
-    #     print(f"VI {count_token(vi)} token | {vi}")
-    #     print(f"EN {count_token(en)} token | {en}\n")
+  # test bài 4
+  # pairs = [
+  #     ("Xin chào, hôm nay trời đẹp quá.", "Hello, the weather is so nice today."),
+  #     (
+  #         "Tôi muốn đặt một bàn cho bốn người vào tối thứ Bảy.",
+  #         "I would like to book a table for four people on Saturday evening.",
+  #     ),
+  #     (
+  #         "Mô hình ngôn ngữ lớn dự đoán token tiếp theo dựa trên ngữ cảnh.",
+  #         "Large language models predict the next token based on context.",
+  #     ),
+  # ]
+  # for vi, en in pairs:
+  #     print(f"VI {count_token(vi)} token | {vi}")
+  #     print(f"EN {count_token(en)} token | {en}\n")
 
-    # co_dau = "Tôi muốn đặt một bàn cho bốn người vào tối thứ Bảy."
-    # khong_dau = "Toi muon dat mot ban cho bon nguoi vao toi thu Bay."
-    # print(f"Có dấu:    {count_token(co_dau)} token")
-    # print(f"Không dấu: {count_token(khong_dau)} token")
+  # co_dau = "Tôi muốn đặt một bàn cho bốn người vào tối thứ Bảy."
+  # khong_dau = "Toi muon dat mot ban cho bon nguoi vao toi thu Bay."
+  # print(f"Có dấu:    {count_token(co_dau)} token")
+  # print(f"Không dấu: {count_token(khong_dau)} token")
 
-    # test bài 5
-    # response = ask(PROMPT_BAI3)
-    # usage = response.usage
-    # if usage is not None:
-    #     print(usage)
-    #     cost = cost_usd(
-    #         usage.input_tokens, usage.output_tokens, PRICE_IN_PER_MTOK, PRICE_OUT_PER_MTOK
-    #     )
-    #     print(f"Input: {usage.input_tokens} token | Output: {usage.output_tokens} token")
-    #     print(f"Cost 1 request: ${cost:.6f}")
-    #     monthly = cost * 1000 * 20 * 30
-    #     print(f"Ước tính 1000 user × 20 tin/ngày × 30 ngày: ${monthly:.2f}/tháng")
+  # test bài 5
+  # response = ask(PROMPT_BAI3)
+  # usage = response.usage
+  # if usage is not None:
+  #     print(usage)
+  #     cost = cost_usd(
+  #         usage.input_tokens, usage.output_tokens, PRICE_IN_PER_MTOK, PRICE_OUT_PER_MTOK
+  #     )
+  #     print(f"Input: {usage.input_tokens} token | Output: {usage.output_tokens} token")
+  #     print(f"Cost 1 request: ${cost:.6f}")
+  #     monthly = cost * 1000 * 20 * 30
+  #     print(f"Ước tính 1000 user × 20 tin/ngày × 30 ngày: ${monthly:.2f}/tháng")
