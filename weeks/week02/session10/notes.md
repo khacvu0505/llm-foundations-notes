@@ -38,13 +38,13 @@ uv add --dev ruff pyright pytest`
 - [x] **Dữ liệu**: chép `weeks/week02/session07/orders.csv` → `backend/data/orders.csv`.
       (Tuỳ chọn, cho chart đẹp hơn) mở rộng lên ~40–60 đơn trải 14 ngày, thêm cột `city`
       (Hà Nội / Đà Nẵng / TP.HCM) để nối với `get_weather`. Sinh dữ liệu giả có thể nhờ Claude, không phải phần học.
-- [ ] **Tạo cấu trúc** (gợi ý, tự quyết):
+- [x] **Tạo cấu trúc** (gợi ý, tự quyết):
       `    backend/
 app/          main.py, sse.py, tools.py, auth.py, llm.py
 tests/        test_*.py
 data/         orders.csv
 logs/         cost.jsonl (không commit)`
-- [ ] **Chạy**: `uv run fastapi dev app/main.py` (trong `backend/`) → `curl http://127.0.0.1:8000/health`.
+- [x] **Chạy**: `uv run fastapi dev app/main.py` (trong `backend/`) → `curl http://127.0.0.1:8000/health`.
 - [ ] Đọc nhanh: OpenAI docs "Function calling" mục streaming; `openai` SDK README mục "Retries";
       FastAPI "Dependencies" (lại) cho `rate_limit`.
 
@@ -53,8 +53,8 @@ logs/         cost.jsonl (không commit)`
 - [ ] `session09/notes.md`: Bài 1b, dòng so sánh `/chat` ở Bài 2, dòng "bắt → event: error" ở Bài 3, dán log
 - [ ] Bấm Dừng trên trình duyệt thật: DevTools Network hiện gì, message lỗi của Chrome
 - [ ] 3 câu phỏng vấn cuối `session09/notes.md`: viết lại bằng lời mình (đang là bản nháp Claude)
-- [ ] Dọn `session09/web/app/page.tsx`: `console.log(JSON.stringify(chunk))`, dòng trống thừa
-- [ ] Test lỗi giữa stream → đã đưa vào Bài 5 buổi này
+- [x] Dọn `session09/web/app/page.tsx`: `console.log(JSON.stringify(chunk))`, dòng trống thừa
+- [x] Test lỗi giữa stream → đã đưa vào Bài 5 buổi này (`test_openai_error_mid_stream`)
 - [ ] Notion: tick Buổi 9 + dòng Status; nhật ký Tuần 2; nợ Buổi 7, 8 (xem `session09/notes.md`)
 
 ## Bài 1 — Tách file
@@ -266,15 +266,23 @@ _(Claude viết, 2026-10-18, theo yêu cầu. Nguồn: `uv run pytest -v` → **
 
 _(Bản tham khảo Claude viết, 2026-10-18, theo yêu cầu — dựa trên code p1 backend Bài 2.)_
 
-Backend dịch event của OpenAI thành **5 event SSE riêng** cho frontend: `delta {content}`, `tool_call {call_id, name,
-arguments}`, `tool_result {call_id, name, ok, data|error}`, `done {input_tokens, output_tokens, cost_usd, steps,
-incomplete}`, `error {message}` — frontend không thấy event gốc như `response.completed`.
-Thứ tự: có tool thì
-`tool_call → tool_result` (lặp nếu nhiều bước) `→ delta… → done`; không tool thì `delta… → done`.
-Frontend ghép
-`tool_call` với `tool_result` bằng **`call_id`** vì model có thể gọi nhiều tool song song trong 1 bước.
-Tool lỗi → `tool_result ok:false`, stream chạy tiếp để model tự xử lý; OpenAI lỗi → `event: error` rồi dừng.
-Vì TTFT có tool là 3–7s, UI phải hiện trạng thái theo tên tool ("Đang tra đơn hàng…") và đổi ✓/⚠ khi có `tool_result`.
+- Backend dịch event của OpenAI thành **5 event SSE riêng** cho frontend, frontend không thấy event gốc như
+  `response.completed`:
+  - `delta {content}`
+  - `tool_call {call_id, name, arguments}`
+  - `tool_result {call_id, name, ok, data | error}`
+  - `done {input_tokens, output_tokens, cost_usd, steps, incomplete}`
+  - `error {message}`
+
+- Thứ tự: có tool thì `tool_call → tool_result` (lặp nếu nhiều bước) `→ delta… → done`; không tool thì
+  `delta… → done`.
+
+- Frontend ghép `tool_call` với `tool_result` bằng **`call_id`**, vì model có thể gọi nhiều tool song song trong 1 bước.
+
+- Tool lỗi → `tool_result ok:false`, stream chạy tiếp để model tự xử lý. OpenAI lỗi → `event: error` rồi dừng.
+
+- TTFT có tool là 3–7s → UI phải hiện trạng thái theo tên tool ("Đang tra đơn hàng…"), đổi ✓ / ⚠ khi có
+  `tool_result`.
 
 Bản nháp của mình (2026-10-18): có event incomplete/completed...; ghép `tool_call`–`tool_result` bằng tool id; UI hiện
 "đang xử lý…" lúc chờ tool.
@@ -283,4 +291,44 @@ Bản của mình:
 
 ### 2. Tính và giới hạn chi phí cho 1 endpoint chat LLM như thế nào (cost log, rate limit, max tokens)?
 
+_(Claude viết lại từ nháp 3 ý của mình + bổ sung cost log / giới hạn khác, 2026-10-19, theo yêu cầu. Ý "OpenAI vẫn
+tính output đã sinh khi cancel" dựa trên forum cộng đồng OpenAI, chưa thấy docs chính thức.)_
+
+- Chi phí tính theo token input và token output, mỗi loại một giá. Thường input rẻ hơn output (model đang dùng:
+  $0.10 / 1M input, $0.50 / 1M output, tức output đắt gấp 5).
+
+- Với tool loop, input mới là phần tốn tiền chính: mỗi bước gửi lại toàn bộ lịch sử nên input cộng dồn (câu 2 tool:
+  2368 input, chỉ 201 output).
+
+- Cost log: cộng usage qua mọi bước, ghi 1 dòng mỗi request trong `finally`, nên request lỗi hay bị cancel vẫn có log.
+
+- Bị cancel giữa stream: OpenAI vẫn tính input cùng phần output đã sinh tới lúc ngắt. Nhưng bước bị ngắt không tới
+  `response.completed` nên log không có usage của bước đó và ghi thiếu (cần ước lượng hoặc đánh dấu).
+
+- Giới hạn mỗi request: `max_output_tokens` (không đặt thì model sinh tới giới hạn tối đa của nó, nên luôn phải đặt),
+  `max_length` cho input, `MAX_STEPS` cho số vòng tool.
+
+- Giới hạn tổng: rate limit theo IP trả 429 trước khi gọi OpenAI, nên request bị chặn tốn $0.
+
 ### 3. Rate limit in-memory có vấn đề gì khi scale, thay bằng gì?
+
+_(Claude viết, 2026-10-19, theo yêu cầu. Nguồn: `app/rate_limit.py`; ý 2–4 suy ra từ code, chưa chạy thử
+`--workers 4`; ý proxy chưa kiểm trên Railway/Vercel thật — kiểm lại Buổi 12.)_
+
+- Hiện tại: bộ đếm `_hits` là dict lưu trong RAM của 1 process (sliding window, 5 request / 60s / IP).
+
+- Restart / redeploy / `fastapi dev` reload → bộ đếm về 0 → user vừa bị chặn lại được gọi tiếp ngay.
+
+- Nhiều worker (`--workers 4`) → mỗi worker có dict riêng, không biết nhau → thực tế 1 IP được tới 5 × 4 = 20
+  request/phút.
+
+- Nhiều server sau load balancer → mỗi máy đếm riêng, giới hạn thật nhân lên theo số máy.
+
+- Rò bộ nhớ: `_hits` chỉ xoá mốc thời gian cũ, không bao giờ xoá key IP → nhiều IP lạ thì dict phình dần.
+
+- Sau proxy (Railway, Vercel): `request.client.host` là IP của proxy → mọi user chung 1 bộ đếm, cả hệ thống chỉ được
+  5 request/phút. Sửa: đọc IP thật từ header `X-Forwarded-For`, nhưng chỉ tin header đó khi request đi qua proxy của
+  mình (vì client tự gửi giả được) — uvicorn có `--proxy-headers` + `--forwarded-allow-ips`.
+
+- Thay bằng: Redis dùng chung cho mọi worker/server, có TTL tự xoá. Cách đếm: `INCR` + `EXPIRE` (fixed window, đơn
+  giản) hoặc sorted set (sliding window, chính xác hơn, giống bản hiện tại).

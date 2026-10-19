@@ -23,7 +23,7 @@ from app.tools import MAX_STEPS, TOOLS, TOOLS_REGISTRY, execute_call
 app = FastAPI()
 
 origins = [
-  "http://localhost:3000",
+  "http://localhost:3100",
 ]
 
 app.add_middleware(
