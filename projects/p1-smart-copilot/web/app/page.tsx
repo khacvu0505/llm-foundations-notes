@@ -4,6 +4,7 @@
 // Render tạm bằng <pre>, Bài 3 thay bằng component (bảng / chart / card).
 
 import { useRef, useState } from "react";
+import { ToolView } from "@/components/ToolView";
 import { applyEvent } from "@/lib/applyEvent";
 import { errorFromException, errorFromResponse } from "@/lib/errors";
 import { readEvents } from "@/lib/sse";
@@ -102,9 +103,34 @@ export default function Home() {
       {status === "stopped" && <p className="text-sm text-zinc-500">Đã dừng</p>}
       {message.error && <p className="text-sm text-red-600">{message.error}</p>}
 
-      <pre className="overflow-x-auto rounded bg-zinc-100 p-3 text-xs dark:bg-zinc-900">
-        {JSON.stringify(message, null, 2)}
-      </pre>
+      {/* Bài 3: parts theo thứ tự đến — text → đoạn chữ, tool → ToolView (trạng thái / component / cảnh báo) */}
+      <div className="flex flex-col gap-3">
+        {message.parts.map((p, i) =>
+          p.type === "text" ? (
+            // text part không có id; thứ tự parts chỉ thêm vào cuối, không chèn giữa → index làm key được
+            <p key={`text-${i}`} className="whitespace-pre-wrap">
+              {p.text}
+            </p>
+          ) : (
+            <ToolView key={p.call_id} part={p} />
+          ),
+        )}
+      </div>
+
+      {message.usage && (
+        <p className="text-xs text-zinc-500">
+          {message.usage.input_tokens} in · {message.usage.output_tokens} out · ${message.usage.cost_usd.toFixed(5)}
+          {message.usage.incomplete && " · bị cắt (incomplete)"}
+        </p>
+      )}
+
+      {/* để debug, Bài 4 bỏ */}
+      <details className="text-xs">
+        <summary className="cursor-pointer text-zinc-500">JSON message</summary>
+        <pre className="overflow-x-auto rounded bg-zinc-100 p-3 dark:bg-zinc-900">
+          {JSON.stringify(message, null, 2)}
+        </pre>
+      </details>
     </main>
   );
 }
