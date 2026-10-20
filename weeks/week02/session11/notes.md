@@ -205,12 +205,50 @@ Vì sao tách `applyEvent` thành hàm thuần:
 
 ## Bài 3 — Generative UI
 
-| Câu hỏi                                                    | Tool + component hiện ra | Thời gian tới component | Thời gian tới chữ đầu | Ghi chú |
-| ---------------------------------------------------------- | ------------------------ | ----------------------- | --------------------- | ------- |
-| "Đơn nào của An đang giao?"                                |                          |                         |                       |         |
-| "Tuần này món nào bán chạy nhất?"                          |                          |                         |                       |         |
-| "Mai Đà Nẵng mưa không, có nên giao đơn không?"            |                          |                         |                       |         |
-| "So sánh doanh thu theo ngày với thời tiết Hà Nội hôm nay" |                          |                         |                       |         |
+_(Claude ghi, 2026-10-20, theo yêu cầu "kiểm Bài 3". Nguồn: đọc code commit `6b54d8c`; `pnpm exec tsc --noEmit` +
+`eslint .` trong `web/` → sạch; 4 câu hỏi thật qua `curl -N localhost:3100/api/chat` + perl timestamp, 1 lần mỗi câu.
+Thời gian = lúc **event** tới (`tool_call` → hiện trạng thái, `tool_result` → hiện component), **chưa** đo lúc trình
+duyệt vẽ — chưa mở trình duyệt.)_
+
+Code (ai viết, theo comment đầu file):
+
+| File                         | Nội dung                                                                                                   | Ai viết             |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------- |
+| `components/ToolView.tsx`    | registry `TOOL_UI` (name → câu `running` + `render`), 3 trạng thái `running` / `error` / ok, tool lạ → `<details>` JSON | Claude theo yêu cầu |
+| `components/OrdersTable.tsx` | bảng đơn, nhãn trạng thái tiếng Việt, 0 đơn → "Không có đơn nào khớp", cuộn khi nhiều đơn, dòng tổng     | Claude theo yêu cầu |
+| `components/SalesChart.tsx`  | tự vẽ bằng `div` + %: nhãn toàn ngày → cột dọc, còn lại → thanh ngang xếp hạng                             | Claude theo yêu cầu |
+| `components/WeatherCard.tsx` | card nhiệt độ + mô tả + giờ cập nhật                                                                       | Claude theo yêu cầu |
+| `lib/format.ts`              | `formatVnd` (`Intl.NumberFormat` VND), `formatDate` (tách chuỗi, không `new Date()`)                       | Claude theo yêu cầu |
+| `app/page.tsx`               | thay `<pre>` bằng `parts.map` → text / `ToolView`                                                          | Claude theo yêu cầu |
+
+| Câu hỏi                                                    | Tool + component hiện ra                                                   | Thời gian tới component | Thời gian tới chữ đầu | Ghi chú |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------- | ----------------------- | --------------------- | ------- |
+| "Đơn nào của An đang giao?"                                | `query_orders(An, shipping)` → OrdersTable "Không có đơn nào khớp"         | 4046ms                  | 5104ms                | `tool_call` 3860ms (lần này model nghĩ lâu), tool ~0.2s |
+| "Tuần này món nào bán chạy nhất?"                          | `sales_summary(product)` → SalesChart thanh ngang                          | 1285ms                  | 3296ms                | component trước chữ ~2s |
+| "Mai Đà Nẵng mưa không, có nên giao đơn không?"            | `get_weather(Đà Nẵng)` → WeatherCard                                       | 2734ms                  | 4440ms                | tool gọi mạng ~1.2s → trạng thái "Đang xem thời tiết Đà Nẵng…" hiện lâu nhất |
+| "So sánh doanh thu theo ngày với thời tiết Hà Nội hôm nay" | `sales_summary(day)` → SalesChart cột dọc, rồi `get_weather(Hà Nội)` → WeatherCard | 1880ms / 2938ms   | 4514ms                | **2 tool cùng 1 bước** (`steps: 2`) — lần này gặp thật (Bài 2 chỉ có unit test) |
+
+Quan sát:
+
+- _(Claude ghi)_ **Component hiện trước chữ 1–2s ở cả 4 câu** → người dùng thấy số liệu sớm, đây là lợi ích chính của
+  Generative UI trong project này.
+- _(Claude ghi)_ **Khoảng trống trước `tool_call` (1.2–3.9s) chỉ có "Đang trả lời…"**: backend gửi `tool_call` **sau** khi
+  bước stream xong, ngay trước lúc chạy tool (`main.py:123-130`), nên trạng thái "Đang tra…" chỉ hiện trong lúc tool
+  chạy (0.02–1.2s), không phủ được lúc model đang quyết định. Muốn sớm hơn thì backend phải gửi khi nhận
+  `response.output_item.added` (giả thuyết, chưa thử).
+- _(Claude ghi)_ 2 tool cùng bước: backend chạy **tuần tự** → `tool_call` của `get_weather` chỉ tới sau khi
+  `sales_summary` xong (1880ms) → 2 trạng thái không hiện cùng lúc.
+- _(Claude ghi)_ Rủi ro: `data as OrdersData` chỉ là cast. Nếu backend đổi hình dạng `data` (vd thiếu `orders`) thì
+  `data.orders.length` ném lỗi lúc render → không có error boundary nên **cả trang trắng**. Cách chặn (chưa làm): bọc
+  `ToolView` bằng error boundary, hoặc kiểm tối thiểu / Zod ở `render` trước khi đưa vào component.
+- _(Claude ghi)_ `SalesChart` đoán "theo ngày / theo món" từ **nhãn** (regex ngày) vì `render` chỉ nhận `data`; chắc hơn
+  là truyền `part.arguments.group_by` vào.
+
+Còn mở (tự làm):
+
+- [ ] Mở **trình duyệt** hỏi 4 câu trên: component vẽ đúng (bảng / chart / card), trạng thái "Đang…" có hiện, chart
+      cột dọc với 14 ngày có cần cuộn ngang không (gộp với mục "Thử trên trình duyệt" Bài 1, 2)
+- [ ] Thử 1 tool lỗi để thấy cảnh báo ⚠️ (dễ nhất ở Bài 5 bằng route giả)
 
 Chart: thư viện hay tự vẽ, vì sao:
 
@@ -226,25 +264,151 @@ Generative UI (backend trả data, frontend chọn component) vs để LLM sinh 
 
 ## Bài 4 — Widget + streaming UI
 
+_(Claude ghi, 2026-10-20, theo yêu cầu. Nguồn: Chrome headless (playwright-core + Chrome 155, script ở scratchpad, không
+commit) chạy trên `pnpm dev` + FastAPI thật; "giả" = chặn `/api/chat` bằng `page.route` của Playwright (**chưa** phải
+route giả Bài 5); `tail backend/logs/cost.jsonl`; `curl`. `pnpm exec tsc --noEmit` + `pnpm lint` trong `web/` → sạch.)_
+
+Code (ai viết):
+
+| File                        | Nội dung                                                                                         | Ai viết                       |
+| --------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------- |
+| `lib/types.ts`              | `UserMessage`, `AssistantTurn` (`status: "streaming" \| "done" \| "stopped"`, `message` lồng bên trong), `ChatMessage` | mình viết (Claude review 2 vòng) |
+| `components/ChatWidget.tsx` | bước 2–6: bong bóng + khung, `messages[]` + `updateTurn(id)`, Dừng, chỉ báo / lỗi / usage, tự cuộn | Claude theo yêu cầu           |
+| `app/embed/page.tsx`        | chỉ có widget, bọc `<div data-embed>`                                                            | Claude theo yêu cầu           |
+| `app/page.tsx`              | trang demo (câu mẫu + link `/embed`) + widget; **bỏ** trang thử Bài 2–3 (bản cũ ở `6b54d8c`)    | Claude theo yêu cầu           |
+| `app/globals.css`           | `body:has([data-embed]) { background: transparent }`                                             | Claude theo yêu cầu           |
+| `embed-test/index.html`     | trang "Quán Cà Phê Demo" ở :5500, `<iframe>` 420×640 góc phải dưới                               | Claude theo yêu cầu           |
+
+| Thử                                                  | Kết quả                                                                                                     |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 2 câu liên tiếp ("bán chạy nhất", "đơn đang giao")   | `200` 5.4s / 4.3s, 2 cặp hỏi–đáp đúng thứ tự, chart + bảng trong khung. Bảng rộng 502px tự cuộn ngang trong ô, list 382px không tràn |
+| Đang stream                                          | Dừng hiện, Gửi ẩn; gõ câu khác + Enter → vẫn **1** request                                                 |
+| Dừng sau chữ đầu ("Mai Đà Nẵng mưa không…")          | giữ 202 ký tự + "Đã dừng"; backend `"status": "cancelled"`, `latency_ms: 5792`, `tools: ["get_weather"]`; câu sau `200` |
+| "Xin chào"                                           | "Đang trả lời…" hiện ngay sau Gửi → chữ → `461 in · 16 out · $0.00005`                                     |
+| 429 giả (`retry-after: 42`)                          | "Bạn hỏi nhanh quá, thử lại sau 42 giây" dưới đúng tin đó                                                  |
+| `event: error` giữa stream (giả)                     | giữ "Chữ trước lỗi." + lỗi đỏ bên dưới; Gửi hiện lại                                                       |
+| Cuộn (list ~400px cao)                               | A. ở đáy → theo chữ (`gap 0`). B. cuộn lên giữa chừng: nội dung 811 → 1201px, `scrollTop` vẫn 0. C. đang cuộn lên mà gửi câu mới → về đáy. D. cuộn lên, đóng + mở lại → về đáy |
+| `/embed`                                             | `200`, title "Smart Copilot", hỏi được                                                                     |
+| iframe từ `localhost:5500`                           | iframe tải, hỏi "Mai Đà Nẵng mưa không?" → WeatherCard + chữ + usage. Request `/api/chat` đi từ frame `:3100/embed`, `Origin: http://localhost:3100`, `Sec-Fetch-Site: same-origin`; log dev **không** có cảnh báo `allowedDevOrigins` |
+| `curl -D - localhost:3100/embed` (dev)               | **không** có `X-Frame-Options`, **không** có `Content-Security-Policy`                                      |
+| `http.server --directory embed-test`                 | `/../backend/.env` → `404`                                                                                  |
+| Nền trong suốt cho `/embed`                          | **Chưa đạt**: CSS trả về thiếu rule `data-embed` dù đã restart `pnpm dev` (12:23:10) → iframe vẫn là ô đen 420×640. Tailwind compile thẳng `globals.css` thì **có** rule; class mới trong `.tsx` (`.list-disc`) thì có → chỉ nội dung `globals.css` bị cũ |
+
+Quan sát:
+
+- _(Claude ghi)_ **Bug: bấm Dừng → form gửi luôn câu đang gõ** (test bắt được: 2 request). React dùng lại **cùng 1
+  `<button>`**, đổi `type="button"` → `"submit"` ngay trong lúc xử lý click → hành động mặc định của click thành submit.
+  Sửa: `key="stop"` / `key="send"` → React tạo nút mới. Sau sửa: 1 request. Trang thử cũ (`page.tsx`) có cùng bug, đã bỏ.
+- _(Claude ghi)_ Ẩn nút Gửi **chưa đủ**: form chỉ có 1 ô nhập thì Enter vẫn submit dù không có nút submit → phải chặn
+  `streaming` trong `handleSubmit`.
+- _(Claude ghi)_ `streaming` **suy ra từ `messages`**, không thêm state, không dùng `abortRef` (đổi ref không render lại).
+- _(Claude ghi)_ Tạo `id` **ngoài** updater: Strict Mode gọi updater 2 lần → `crypto.randomUUID()` bên trong ra 2 id
+  khác nhau. `React.FormEvent` đã deprecated trong `@types/react` 19.3 → dùng `React.SubmitEvent`.
+- _(Claude ghi)_ Tự cuộn: `nearBottomRef` chỉ đo **lúc cuộn**; nội dung dài thêm (card 300px) không bắn scroll nên giá
+  trị giữ từ lần trước. Không dùng `behavior: "smooth"`: cuộn mượt chưa xong thì delta sau tới, scroll event giữa chừng
+  đo ra "không ở đáy" → tự ngừng theo.
+- _(Claude ghi)_ **iframe che click** trang chủ cả vùng 420×640 kể cả khi khung đóng (`elementFromPoint(980, 400)` →
+  `IFRAME#copilot`). Widget thật đổi kích thước iframe bằng `postMessage` (đóng = cỡ bong bóng). Chưa làm.
+- _(Claude ghi)_ Model trả **markdown** (`**900.000₫**`, `**ít mây**`) mà UI hiện chữ thô → thấy dấu `**`. Câu "đơn đang
+  giao" còn liệt kê lại 9 đơn bằng chữ ngay dưới bảng → trùng, dài.
+- _(Claude ghi)_ Đóng khung lúc đang stream **không** dừng stream (state nằm ở `ChatWidget`, khung chỉ ẩn). Mở lại thì về
+  đáy, không về chỗ đang đọc.
+- _(Claude ghi)_ Backend `ChatRequest` chỉ nhận 1 `message` → giao diện hiện nhiều tin nhưng **chưa** là hội thoại nhiều
+  lượt, model không nhớ câu trước (như đề bài đã lưu ý).
+
+Còn mở (tự làm):
+
+- [ ] Nền trong suốt: Ctrl+C `pnpm dev` → `rm -rf .next/dev/cache/turbopack` (trong `web/`) → `pnpm dev` → mở :5500 xem
+      ô đen còn không. Giả thuyết (chưa chứng minh): cache Turbopack + loader CSS tự cấu hình (`next.config.ts`) không
+      nhận thay đổi của `globals.css`
+- [ ] Tự thử trong widget: 6 câu liên tiếp → câu 6 hiện 429 thật (lần này mới thử 429 **giả**)
+- [ ] Markdown thô: render markdown (vd `react-markdown`) hay sửa prompt backend ("UI đã hiện bảng, chỉ tóm tắt")
+- [ ] Kiểm header bản build (`pnpm build && pnpm start`): có `X-Frame-Options` / CSP không (mới kiểm ở dev)
+- [ ] (Tuỳ chọn) iframe đổi kích thước bằng `postMessage`
+- [x] (Tuỳ chọn) `lib/types.ts`: thêm `;` dòng 62, 68, 69, 71, bỏ 1 dòng trống thừa, trả thụt lề dòng 15–16
+      _(Claude sửa, 2026-10-20, theo yêu cầu)_
+
 iframe có bị chặn không; iframe vs `<script>` nhúng thẳng:
 
+- _Bản tham khảo do Claude viết:_
+  - **Bị chặn không**: không. `curl` `/embed` ở dev không có `X-Frame-Options` lẫn CSP, nhúng từ :5500 chạy thật. Docs
+    Next 16 chỉ có 2 header này ở dạng **ví dụ tự thêm** (`headers.md` mục X-Frame-Options; `content-security-policy.md`
+    dùng `frame-ancestors 'none'`) → mặc định không gửi (đã kiểm ở dev, **chưa** kiểm bản build). Lên prod nên thêm
+    `frame-ancestors` liệt kê đúng domain được nhúng (chống clickjacking), không mở cho mọi trang.
+  - **CSS**: iframe là document riêng → CSS 2 bên không đụng nhau (Tailwind preflight của widget không reset trang chủ).
+    Script chèn thẳng thì dùng chung CSS → cần Shadow DOM hoặc tiền tố class.
+  - **Gọi API / key**: iframe gọi `/api/chat` cùng origin của nó (đã thấy `Sec-Fetch-Site: same-origin`) → không cần
+    CORS, key vẫn ở server. Script chạy trong origin trang chủ → gọi API của mình là cross-origin → cần CORS.
+  - **Cookie** (kiến thức chung, **chưa thử**: :5500 và :3100 cùng site `localhost` nên local không tái hiện được): khi
+    2 domain khác nhau, cookie của iframe là cookie bên thứ ba → trình duyệt chặn / tách riêng → đăng nhập trong widget
+    khó. Script thì dùng cookie của trang chủ.
+  - **Bảo mật**: same-origin policy → trang chủ không đọc được DOM / dữ liệu trong iframe và ngược lại. Script chạy với
+    toàn quyền trên trang chủ → trang chủ phải tin script hoàn toàn, và JS của trang chủ cũng đọc / sửa được widget.
+  - **Bố cục**: iframe kích thước cố định → che click cả vùng (đã thấy) → cần `postMessage` đổi kích thước. Script đặt
+    vị trí tự do.
 - Bản của mình:
 
 Những gì làm cho stream "mượt" (chỉ báo, cuộn, Dừng):
 
+- _Bản tham khảo do Claude viết:_
+  - **Không để khung trống**: "Đang trả lời…" khi tin chưa có part nào (1.2–3.9s đầu, đo ở Bài 3); có tool thì
+    `ToolView` hiện "Đang tra…"; component hiện trước chữ 1–2s.
+  - **Tự cuộn có điều kiện**: chỉ cuộn khi đang cách đáy < 50px (`nearBottomRef`, ref chứ không state), gán `scrollTop`
+    thẳng; gửi câu mới / mở lại khung → về đáy. Cuộn lên đọc thì không bị kéo xuống.
+  - **Khoá Gửi + Dừng**: `streaming` suy từ `messages`, chặn cả Enter; Dừng = `AbortController` → huỷ tới FastAPI
+    (`cancelled`), giữ chữ đã có + "Đã dừng"; 2 nút có `key` riêng.
+  - **Lỗi / usage dưới từng tin**: lỗi không xoá chữ đã có; usage nhỏ dưới mỗi câu trả lời.
 - Bản của mình:
 
 ## Bài 5 — Kiểm tra
 
+_(Claude ghi, 2026-10-20, theo yêu cầu. Nguồn: `curl` từng kịch bản `/api/chat-mock`; Chrome headless (playwright-core,
+script ở scratchpad, không commit) bấm widget ở `/mock` (route giả) và `/` (route thật, FastAPI + OpenAI thật, 9 lượt
+gọi); `tail backend/logs/cost.jsonl`; `.next/dev/logs/next-development.log`. ms tính từ lúc bấm Gửi, đo trên giao diện.)_
+
+Code (Claude viết theo yêu cầu):
+
+| File                         | Nội dung                                                                                                  |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `app/api/chat-mock/route.ts` | `?scenario=` `ok` / `tool-error` / `mid-error` / `unknown-tool` / `rate-limit`; event có type `ChatEvent` + `wait` (chờ trước mỗi event); đúng dạng `backend/app/sse.py`; nghe `request.signal` để Dừng; prod → `404` |
+| `app/mock/page.tsx`          | chọn kịch bản (radio) → `<ChatWidget endpoint="/api/chat-mock?scenario=…">`; client page + `useState` để khỏi bọc `<Suspense>` khi bật `cacheComponents` |
+| `components/ChatWidget.tsx`  | thêm prop `endpoint` (mặc định `/api/chat`)                                                              |
+
 | Thử                                 | Mong đợi                                         | Thực tế |
 | ----------------------------------- | ------------------------------------------------ | ------- |
-| Route giả: tool → delta → done      | trạng thái tool → component → chữ → usage        |         |
-| Route giả: `tool_result ok:false`   | cảnh báo nhỏ, chữ vẫn chảy, kết thúc bằng `done` |         |
-| Lỗi giữa stream (`event: error`)    | giữ chữ đã có + câu báo lỗi gọn                  |         |
-| Bấm Dừng giữa chừng                 | giữ chữ đã có, "đã dừng", backend log `cancelled` |         |
-| 6 câu liên tiếp                     | câu 6 → "thử lại sau N giây" (429)               |         |
-| Nhúng iframe từ origin khác         | widget chạy                                      |         |
-| `pnpm lint`, `pnpm exec tsc --noEmit` | sạch                                           |         |
+| Route giả: tool → delta → done      | trạng thái tool → component → chữ → usage        | ✅ "Đang trả lời…" 39ms → "Đang xem thời tiết Đà Nẵng…" 982ms → WeatherCard 2418ms → chữ chảy → `0 in · 0 out · $0.00000` |
+| Route giả: `tool_result ok:false`   | cảnh báo nhỏ, chữ vẫn chảy, kết thúc bằng `done` | ✅ "Đang tra đơn hàng của An…" 883ms → "⚠️ Tool query_orders lỗi, thử lại sau" 2014ms → chữ chảy bên dưới → usage |
+| Lỗi giữa stream (`event: error`)    | giữ chữ đã có + câu báo lỗi gọn                  | ✅ 15 delta "Doanh thu tuần này … tiếp theo là" giữ nguyên + "Có lỗi khi tạo câu trả lời, thử lại sau" (đỏ), không có usage |
+| (thêm) Tool lạ `get_stock`          | fallback, không crash                            | ✅ "Đang chạy get_stock…" → `<details>` "Kết quả get_stock" → chữ → usage |
+| (thêm) 429 giả                      | "thử lại sau N giây"                             | ✅ "Bạn hỏi nhanh quá, thử lại sau 42 giây" sau ~150ms |
+| Bấm Dừng giữa chừng                 | giữ chữ đã có, "đã dừng", backend log `cancelled` | ✅ Route giả: Dừng ở 5358ms → giữ card + chữ tới "…không gọi" + "Đã dừng"; dev log `[api/chat-mock] ok: cancelled`. Route thật (Bài 4): `"status": "cancelled"`, `latency_ms: 5792` |
+| 6 câu liên tiếp                     | câu 6 → "thử lại sau N giây" (429)               | ✅ Câu 1–5 "Hi" → `200` (1.4–3.7s, ~$0.00005/câu); câu 6 sau 97ms → "Bạn hỏi nhanh quá, thử lại sau 60 giây"; backend chỉ log 5 câu |
+| 4 câu thật (sau khi chờ 65s)        | tool → component → chữ                           | ✅ An đang giao → OrdersTable "Không có đơn nào khớp" 9760ms, tổng 11430ms ⚠️ (xem quan sát). Bán chạy → SalesChart 1842ms, chữ 4174ms. Đà Nẵng → WeatherCard 2428ms, chữ 3846ms. Doanh thu + Hà Nội → 2 tool, component đầu 1304ms, chữ 5476ms, `steps: 3` |
+| Nhúng iframe từ origin khác         | widget chạy                                      | ✅ (Bài 4) hỏi được từ :5500. ⚠️ Nền trong suốt chưa ăn (ô đen 420×640) — xem "Còn mở" Bài 4 |
+| `pnpm lint`, `pnpm exec tsc --noEmit` | sạch                                           | ✅ cả 2 sạch |
+
+Quan sát:
+
+- _(Claude ghi)_ **Câu "An đang giao" sau 65s chờ: giao diện 11.4s nhưng backend `latency_ms: 3560`** → ~8s mất **trước**
+  khi backend bắt đầu đo. 3 câu sau khớp (giao diện ≈ backend + ~0.2–0.4s). Chưa rõ ở lớp nào (Next dev / FastAPI /
+  kết nối nguội sau khi nghỉ), **chưa điều tra**, mới gặp 1 lần.
+- _(Claude ghi)_ Route giả dùng chung type `ChatEvent` với frontend → gõ sai tên event / thiếu field là `tsc` báo. Nhưng nó
+  **không** kiểm backend: backend đổi hình dạng thì route giả vẫn xanh (giống OpenAI giả ở test Buổi 10).
+- _(Claude ghi)_ `wait` trước mỗi event là bắt buộc: không chờ thì cả kịch bản tới trong 1 chunk, không thấy "Đang…",
+  không kịp bấm Dừng.
+- _(Claude ghi)_ 429 thật hiện **60 giây** (cố định, nợ Buổi 10), 429 giả hiện 42 → chứng minh số giây lấy đúng từ
+  `Retry-After`.
+
+Còn mở:
+
+- [x] (Tuỳ chọn) Vitest cho `lib/sse.ts` + `applyEvent` _(Claude làm, 2026-10-20, theo yêu cầu)_: `pnpm add -D vitest`
+      (5.0.5, chỉ vitest — không cần jsdom / Testing Library vì chỉ test hàm thuần), script `"test": "vitest run"`,
+      `lib/sse.test.ts` (9 case) + `lib/applyEvent.test.ts` (6 case) → `pnpm test` **15/15 pass** (180ms).
+      Kiểm test có bắt lỗi thật: cài 3 bug vào bản copy tạm (ghép theo `name`, `decode` không `stream`, `Object.assign`
+      sửa part cũ) → lần đầu chỉ bắt 2/3 (case "không sửa message cũ" có part cuối là tool nên không đi vào nhánh nối
+      chữ) → sửa case đó → bắt đủ 3/3. Cảnh báo khi cài: vitest muốn `@types/node` ≥ 22, repo đang `^20` (chạy vẫn
+      được, `tsc` sạch vì `skipLibCheck`)
+- [ ] Tự bấm lại `/mock` trên trình duyệt thật (Chrome có extension) cho 5 kịch bản
 
 ## Câu phỏng vấn liên quan (tự trả lời sau buổi, 3–5 dòng)
 

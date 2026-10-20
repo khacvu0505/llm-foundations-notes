@@ -53,3 +53,18 @@ export type AssistantMessage = {
   usage?: Usage;
   error?: string;
 };
+
+export type UserMessage = {
+  id: string;
+  role: "user";
+  text: string;
+};
+
+export type AssistantTurn = {
+  id: string;
+  role: "assistant";
+  status: "streaming" | "done" | "stopped";
+  message: AssistantMessage;
+};
+
+export type ChatMessage = UserMessage | AssistantTurn;
