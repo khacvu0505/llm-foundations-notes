@@ -1,136 +1,34 @@
-"use client";
+// Claude viết theo yêu cầu, 2026-10-20 — Bài 4 bước 7: trang chủ demo + widget.
+// Trang thử Bài 2–3 (form + <pre> JSON debug) đã bỏ: logic gửi / dừng giờ nằm trong ChatWidget; bản cũ ở commit 6b54d8c.
 
-// Claude viết theo yêu cầu, 2026-10-19 — trang thử Bài 2: readEvents + applyEvent + errors.
-// Render tạm bằng <pre>, Bài 3 thay bằng component (bảng / chart / card).
+import Link from "next/link";
+import { ChatWidget } from "@/components/ChatWidget";
 
-import { useRef, useState } from "react";
-import { ToolView } from "@/components/ToolView";
-import { applyEvent } from "@/lib/applyEvent";
-import { errorFromException, errorFromResponse } from "@/lib/errors";
-import { readEvents } from "@/lib/sse";
-import type { AssistantMessage } from "@/lib/types";
-
-type Status = "idle" | "streaming" | "stopped";
+const SAMPLE_QUESTIONS = [
+  "Đơn nào của An đang giao?",
+  "Tuần này món nào bán chạy nhất?",
+  "Mai Đà Nẵng mưa không, có nên giao đơn không?",
+  "So sánh doanh thu theo ngày với thời tiết Hà Nội hôm nay",
+];
 
 export default function Home() {
-  const [input, setInput] = useState("");
-  const [message, setMessage] = useState<AssistantMessage>({ parts: [] });
-  const [status, setStatus] = useState<Status>("idle");
-  const abortRef = useRef<AbortController | null>(null);
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const text = input.trim();
-    if (!text || status === "streaming") return;
-
-    setMessage({ parts: [] });
-    setStatus("streaming");
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      // cùng origin → không cần CORS, không có key ở trình duyệt (Bài 1)
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
-        signal: controller.signal,
-      });
-      if (!res.ok || !res.body) {
-        const error = await errorFromResponse(res);
-        setMessage((m) => ({ ...m, error }));
-        setStatus("idle");
-        return;
-      }
-      for await (const ev of readEvents(res.body)) {
-        setMessage((m) => applyEvent(m, ev));
-      }
-      setStatus("idle");
-    } catch (err) {
-      // AbortError có thể ném ở fetch hoặc giữa lúc đọc stream → cùng 1 chỗ xử lý
-      const error = errorFromException(err);
-      if (error === null) {
-        setStatus("stopped"); // bấm Dừng: giữ chữ đã có
-      } else {
-        setMessage((m) => ({ ...m, error }));
-        setStatus("idle");
-      }
-    } finally {
-      abortRef.current = null;
-    }
-  }
-
-  function handleStop() {
-    abortRef.current?.abort();
-  }
-
-  const streaming = status === "streaming";
-
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-6">
-      <h1 className="text-xl font-semibold">
-        Smart Copilot (Bài 2 — trang thử)
-      </h1>
+      <h1 className="text-xl font-semibold">Smart Copilot</h1>
+      <p className="text-zinc-500">Bấm bong bóng 💬 ở góc phải dưới để hỏi. Câu mẫu:</p>
+      <ul className="list-disc pl-5 text-sm">
+        {SAMPLE_QUESTIONS.map((q) => (
+          <li key={q}>{q}</li>
+        ))}
+      </ul>
+      <p className="text-sm text-zinc-500">
+        Bản nhúng (chỉ có widget, dùng trong <code>&lt;iframe&gt;</code>):{" "}
+        <Link href="/embed" className="underline">
+          /embed
+        </Link>
+      </p>
 
-      <form onSubmit={handleSubmit} className="flex gap-2">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Hỏi gì đó, vd: Đơn nào của An đang giao?"
-          maxLength={500}
-          className="flex-1 rounded border px-3 py-2"
-        />
-        {streaming ? (
-          <button
-            type="button"
-            onClick={handleStop}
-            className="rounded border px-4 py-2"
-          >
-            Dừng
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!input.trim()}
-            className="rounded border px-4 py-2 disabled:opacity-50"
-          >
-            Gửi
-          </button>
-        )}
-      </form>
-
-      {streaming && <p className="text-sm text-zinc-500">Đang trả lời…</p>}
-      {status === "stopped" && <p className="text-sm text-zinc-500">Đã dừng</p>}
-      {message.error && <p className="text-sm text-red-600">{message.error}</p>}
-
-      {/* Bài 3: parts theo thứ tự đến — text → đoạn chữ, tool → ToolView (trạng thái / component / cảnh báo) */}
-      <div className="flex flex-col gap-3">
-        {message.parts.map((p, i) =>
-          p.type === "text" ? (
-            // text part không có id; thứ tự parts chỉ thêm vào cuối, không chèn giữa → index làm key được
-            <p key={`text-${i}`} className="whitespace-pre-wrap">
-              {p.text}
-            </p>
-          ) : (
-            <ToolView key={p.call_id} part={p} />
-          ),
-        )}
-      </div>
-
-      {message.usage && (
-        <p className="text-xs text-zinc-500">
-          {message.usage.input_tokens} in · {message.usage.output_tokens} out · ${message.usage.cost_usd.toFixed(5)}
-          {message.usage.incomplete && " · bị cắt (incomplete)"}
-        </p>
-      )}
-
-      {/* để debug, Bài 4 bỏ */}
-      <details className="text-xs">
-        <summary className="cursor-pointer text-zinc-500">JSON message</summary>
-        <pre className="overflow-x-auto rounded bg-zinc-100 p-3 dark:bg-zinc-900">
-          {JSON.stringify(message, null, 2)}
-        </pre>
-      </details>
+      <ChatWidget />
     </main>
   );
 }
