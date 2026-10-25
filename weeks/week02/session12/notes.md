@@ -2,13 +2,50 @@
 
 Đề bài: `exercises.md` cùng thư mục.
 
-- [ ] A1 chuẩn bị deploy · [ ] A2 backend Render · [ ] A3 frontend Vercel · [ ] A4 IP thật · [ ] A5 README + GIF
+- [x] A1 chuẩn bị deploy (còn Q6 dashboard OpenAI) · [x] A2 backend Render · [ ] A3 frontend Vercel · [ ] A4 IP thật · [ ] A5 README + GIF
 - [ ] B Rebuild test
 
 Link demo:
 
 - Frontend (Vercel):
-- Backend (Render):
+- Backend (Render): https://llm-foundations-notes.onrender.com
+
+## Handoff — dừng ở đây (2026-10-25)
+
+_(Claude ghi để mở session mới trên máy khác. Đọc mục này trước, chi tiết từng bài ở dưới.)_
+
+**Đang dừng ở**: Bài A3 — đã trả lời 3 câu chuẩn bị (Root Directory, env, vì sao không `NEXT_PUBLIC_`, xem mục A3),
+**chưa tạo project Vercel**.
+
+**Đã xong**:
+
+- A1 Q1–Q5 (commit `0e2b5e8`, đã push): bỏ `CORSMiddleware` (`backend/app/main.py`); `/mock` → 404 ở prod
+  (`web/app/mock/page.tsx` Server Component + `MockClient.tsx`).
+- A2: backend chạy trên Render, đủ 6 test (health, stream từng mảnh, 401, 429, tool CSV, cold start 52.5s).
+  Env trên Render: `OPENAI_API_KEY`, `APP_API_KEY`, `PYTHONUNBUFFERED=1`.
+
+**Việc tiếp theo (theo thứ tự)**:
+
+1. A3: Vercel → import repo, Root `projects/p1-smart-copilot/web`, env `BACKEND_URL` + `APP_API_KEY` (= giá trị
+   prod trên Render) → Deploy → chạy bảng test A3.
+2. A4: IP thật sau proxy (manh mối: log Render đã thấy IP thật qua `X-Forwarded-For`, xem Quan sát A2).
+3. A5: README + GIF. 4. Phần B (ngày khác).
+
+**Còn treo**:
+
+- A1 Q6: chưa xác nhận `OPENAI_API_KEY` trên Render là key mới trong project riêng + hard limit → làm trước khi share link.
+- Commit notes này (chưa commit lúc ghi handoff).
+
+**Máy mới cần** (secret không có trong git):
+
+- Giá trị prod `APP_API_KEY` (cần cho Vercel + test `curl`) — tự mang theo, không dán vào chat.
+- Chạy local: tự tạo `backend/.env` (`OPENAI_API_KEY`, `APP_API_KEY`) + `web/.env.local` (`APP_API_KEY`,
+  `BACKEND_URL=http://127.0.0.1:8000`) theo `.env.example`; rồi `uv sync` (backend) + `pnpm install` (web).
+  Lưu ý: `pnpm build` fail nếu `node_modules` cũ thiếu `vitest` (Q5).
+
+**Cách làm việc** (memory của Claude nằm ở máy cũ, không theo repo): đi từng câu một; Claude gợi ý + review + chạy test,
+user tự viết code bài tập (trừ khi user nhờ viết); user tự làm git commit/push + thao tác dashboard (Render, Vercel,
+OpenAI); notes ghi tiếng Việt, mỗi câu có bảng + nguồn.
 
 ## Trạng thái đầu buổi
 
@@ -152,22 +189,52 @@ Việc còn lại (dashboard):
 
 ## Bài A2 — Backend trên Render
 
-Root Directory: · Build: · Start:
+Root Directory: `projects/p1-smart-copilot/backend` · Build: `uv sync --frozen && uv cache prune --ci` · Start:
+`uv run fastapi run`
+
+- Root Directory bắt buộc: gốc repo cũng có `pyproject.toml` + `uv.lock` (môi trường notes) → để trống sẽ cài nhầm.
+- Build: Render điền sẵn. `--frozen` = cài đúng `uv.lock`, không tự sửa lock (`uv lock --check` local: khớp).
+- Start: `run` (host `0.0.0.0`, no reload); không cần `--port` (đọc `PORT`); không cần path (tự tìm `app/main.py`).
+  Placeholder `gunicorn …wsgi` là cho app sync (Flask/Django), FastAPI là ASGI.
+- Env: `OPENAI_API_KEY` (key prod mới), `APP_API_KEY` (giá trị prod mới, Vercel dùng chung), `PYTHONUNBUFFERED=1`.
+  Health check: `/health`. Instance: Free.
 
 | Thử                          | Kết quả |
 | ---------------------------- | ------- |
-| `/health`                    |         |
-| Stream có key (`curl -N`)    |         |
-| Không key                    |         |
-| 6 lần liên tiếp              |         |
-| Tool đơn hàng (đọc CSV)      |         |
-| Cold start (> 15ph không gọi) |        |
+| `/health`                    | ✅ `200` `{"status":"ok"}`, 1.4s (service đang thức) |
+| Stream có key (`curl -N`)    | ✅ câu thời tiết: `tool_call` → `tool_result` (`get_weather` ok) → 34 `delta` → `done` (2 bước, 1020 in / 58 out, $0.000131). **Chảy từng mảnh qua proxy Render** ✅: đo bằng `curl -sN … | perl` (ms từ lúc gửi) → `tool_call` 2545ms, `tool_result` 2949ms, 34 `delta` rải từ 3583 → 3895ms, `done` 4038ms. Vài delta trùng ms = gom theo gói mạng, bình thường; không bị buffer tới cuối |
+| Không key                    | ✅ `401` `Missing API Key`; key sai → `401` `Invalid API Key` |
+| 6 lần liên tiếp              | ✅ 1–5 → `200`, 6 → `429` (`LIMIT = 5` / `WINDOW_S = 60`, `rate_limit.py:6-7`) |
+| Tool đơn hàng (đọc CSV)      | ✅ `query_orders(customer="An", status="shipping")` ok → 0 đơn. Đúng: An có 4 đơn (1007, 1020, 1032, 1036) đều `delivered` → `orders.csv` có trên server |
+| Cold start (> 15ph không gọi) | ✅ đo được: `/health` → `200` sau **52.5s** (lúc thức: 1.4s). Khớp docs Render (~1ph). Health check nội bộ của Render không giữ service thức |
 
 Quan sát:
 
+- URL: `https://llm-foundations-notes.onrender.com` — deploy từ commit `0e2b5e8` (đã push).
+- CORS đã bỏ thật trên prod: preflight `OPTIONS /chat/stream` với `Origin: http://localhost:3100` → `405`, không có
+  header `access-control-*`.
+- Render Logs có `[step 1]` + `[cost] …` → `PYTHONUNBUFFERED=1` có tác dụng (local ghi ra file thì không thấy).
+- TTFT trên Render (câu ngắn "hi", 1 bước, không tool): 543ms / 969ms / 1439ms; total 0.8–2.1s → con số 28.8s ở local
+  (Q5) là bất thường, không phải do code.
+- Request `/health` đến từ IP nội bộ `10.219.x.x` = health check của Render.
+- **Manh mối cho A4**: dòng log uvicorn ghi IP thật của mình `1.54.116.251:0` (không phải IP proxy) → uvicorn đang lấy IP
+  từ `X-Forwarded-For` (`fastapi run` mặc định `--proxy-headers`). Port `:0` là dấu hiệu IP được điền từ header.
+  Chưa rõ vì sao được tin (`--forwarded-allow-ips` mặc định chỉ tin `127.0.0.1` theo uvicorn — _chưa kiểm_; có thể
+  Render đặt `FORWARDED_ALLOW_IPS`) → kiểm ở A4. Sau khi có Vercel, IP này sẽ là IP của Vercel, không phải user.
+- Cold start ~52s: user đầu tiên sau 15ph phải chờ gần 1 phút mới có chữ → ghi README "Hạn chế đã biết"; A3 kiểm widget
+  hiện gì trong lúc chờ (cần báo "đang khởi động" không?). Còn trong giới hạn 300s của Vercel function.
+
 ## Bài A3 — Frontend trên Vercel
 
-Root Directory: · Env:
+Root Directory: `projects/p1-smart-copilot/web` · Env: `BACKEND_URL`, `APP_API_KEY`
+
+- Root Directory: thư mục có `package.json` của Next. Gốc repo không có `package.json` → bắt buộc trỏ vào `web`.
+- `BACKEND_URL` = `https://llm-foundations-notes.onrender.com` (không `/` cuối — `route.ts:12` tự nối `/chat/stream`).
+- `APP_API_KEY` = **đúng giá trị prod đã đặt trên Render** (khác → mọi request `401`).
+- Không dùng `NEXT_PUBLIC_`: biến có prefix này bị **inline vào JS bundle lúc `next build`** → ai mở DevTools / Sources cũng
+  đọc được key (`node_modules/next/dist/docs/01-app/02-guides/self-hosting.md:39`). Không prefix → chỉ có ở server
+  (Route Handler), trình duyệt không thấy.
+- pnpm: Vercel nhận theo `pnpm-lock.yaml` / `packageManager: pnpm@10.31.0` — kiểm dòng install trong build log.
 
 | Thử                                 | Kết quả |
 | ----------------------------------- | ------- |
