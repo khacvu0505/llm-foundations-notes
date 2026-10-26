@@ -3,7 +3,7 @@
 Đề bài: `exercises.md` cùng thư mục.
 
 - [x] A1 chuẩn bị deploy (còn Q6 hard limit OpenAI) · [x] A2 backend Render · [x] A3 frontend Vercel (7/7; còn sửa
-  dòng "đang khởi động" trong widget) · [ ] A4 IP thật · [ ] A5 README + GIF
+  dòng "đang khởi động" trong widget) · [x] A4 IP thật (bỏ qua test 2 máy) · [ ] A5 README + GIF
 - [ ] B Rebuild test
 
 Link demo:
@@ -312,8 +312,9 @@ Sau khi sửa:
 
 | Thử                                     | Kết quả |
 | --------------------------------------- | ------- |
-| 2 máy → 2 bộ đếm riêng                  |         |
-| `curl` thẳng Render, IP giả, không key  |         |
+| Laptop 7 lần qua Vercel (sau sửa, `327eca6`) | ✅ 13:16:38–13:16:51: #1–#5 `200`, #6 + #7 `429` `{"error":"Rate limit exceeded"}` + `Retry-After: 60` (qua được proxy Next). Trước sửa: 6 lần đều `200` |
+| 2 máy → 2 bộ đếm riêng                  | ⏭️ Bỏ qua (user, 2026-10-26). Chưa chứng minh chặt: `429` ở lần 6 cũng có thể ra với code cũ nếu IP Vercel tình cờ không đổi |
+| `curl` thẳng Render, IP giả, không key  | ✅ `X-Client-IP: 9.9.9.9`, không `X-API-Key` → `401` `{"detail":"Missing API Key"}` |
 | pytest "2 IP không chung lượt"          | ✅ `test_rate_limit_counts_per_client_ip` (1.1.1.1: 5×200 rồi 429; 2.2.2.2 vẫn 200) + `test_client_ip_header_without_key_is_401` (IP giả không key → 401, không vào `_hits`). pytest 12/12, ruff / format / pyright sạch |
 
 Sửa (Claude viết theo yêu cầu, user duyệt plan, 2026-10-26):
@@ -337,7 +338,12 @@ Sửa (Claude viết theo yêu cầu, user duyệt plan, 2026-10-26):
 
 ## Bài A5 — README + GIF
 
-- [ ] `projects/p1-smart-copilot/README.md` · [ ] GIF trong `docs/` · [ ] dọn `web/README.md`, `backend/README.md`
+- [x] `projects/p1-smart-copilot/README.md` (bản nháp tiếng Anh, Claude viết theo yêu cầu 2026-10-26, số liệu lấy từ
+  notes Buổi 9–12; chỗ GIF đang comment lại) · [ ] GIF trong `docs/` · [ ] dọn `web/README.md`, `backend/README.md`
+- [x] Trước khi quay GIF — bỏ **Markdown thô** (nợ Buổi 11). Chọn cách A (user): thêm vào `instructions` (`main.py`)
+  "chỉ văn bản thường, không Markdown; liệt kê mỗi ý 1 dòng bắt đầu '- '". Cách B (render bằng `react-markdown`) không
+  làm: thêm dependency. Kiểm local (backend thật + key local): "Thời tiết ở Hà Nội và HCM hôm nay" và "Top 3 sản phẩm
+  bán chạy nhất?" → 0 dấu `*` / `#`, list bằng `- `. Đánh đổi: prompt không bảo đảm 100%, model vẫn có thể lỡ dùng.
 
 ## Phần B — Rebuild test
 
