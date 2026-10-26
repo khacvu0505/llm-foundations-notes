@@ -12,6 +12,21 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Buổi 12 A3 (Claude viết theo yêu cầu, 2026-10-26): class animate-appear-late = ẩn 5s rồi hiện.
+   fill-mode "both" → trong 5s chờ vẫn giữ opacity 0 (keyframe đầu), không nháy lên rồi mới ẩn */
+@theme {
+  --animate-appear-late: appear 0.3s ease-out 5s both;
+
+  @keyframes appear {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
