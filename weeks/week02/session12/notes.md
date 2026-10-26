@@ -7,7 +7,7 @@
 
 Link demo:
 
-- Frontend (Vercel):
+- Frontend (Vercel): https://llm-foundations-notes.vercel.app
 - Backend (Render): https://llm-foundations-notes.onrender.com
 
 ## Handoff — dừng ở đây (2026-10-25)
@@ -184,7 +184,8 @@ Nguồn: [Managing projects](https://help.openai.com/en/articles/9186755-managin
 
 Việc còn lại (dashboard):
 
-- [ ] Tạo project prod + key mới (có hạn) → dán vào Environment trên Render
+- [x] Key trên Render **khác** key local (user xác nhận, 2026-10-26)
+- [~] ~~Key đó nằm trong project OpenAI riêng cho prod~~ — **bỏ qua** (user quyết định, 2026-10-26)
 - [ ] Bật hard limit theo tháng cho project (mức tự chọn, vd vài $) + alert
 
 ## Bài A2 — Backend trên Render
@@ -234,19 +235,45 @@ Root Directory: `projects/p1-smart-copilot/web` · Env: `BACKEND_URL`, `APP_API_
 - Không dùng `NEXT_PUBLIC_`: biến có prefix này bị **inline vào JS bundle lúc `next build`** → ai mở DevTools / Sources cũng
   đọc được key (`node_modules/next/dist/docs/01-app/02-guides/self-hosting.md:39`). Không prefix → chỉ có ở server
   (Route Handler), trình duyệt không thấy.
-- pnpm: Vercel nhận theo `pnpm-lock.yaml` / `packageManager: pnpm@10.31.0` — kiểm dòng install trong build log.
+- pnpm: Vercel chọn theo **lockfile**, **không** theo `packageManager` (field này chỉ dùng khi bật Corepack).
+  `lockfileVersion: '9.0'` → pnpm 9 hoặc 10 (project mới ưu tiên 10) → kiểm dòng install trong build log.
+  Nguồn: [Vercel Package Managers](https://vercel.com/docs/package-managers).
+- Giới hạn Hobby (Fluid compute): default = max = **300s**, tính cả thời gian **stream**; quá → `504`
+  `FUNCTION_INVOCATION_TIMEOUT`. Function chạy ở `iad1` mặc định. Nguồn:
+  [Functions limits](https://vercel.com/docs/functions/limitations).
+- Deployment Protection (Standard, mặc định): URL **production** (`<project>.vercel.app`) public; URL riêng từng deploy
+  (`<project>-<hash>-….vercel.app`) bắt đăng nhập Vercel → share / iframe dùng URL production. Nguồn:
+  [Deployment Protection](https://vercel.com/docs/deployment-protection).
 
 | Thử                                 | Kết quả |
 | ----------------------------------- | ------- |
-| 4 câu thật                          |         |
-| Dừng → Render log `cancelled`       |         |
-| DevTools không thấy key             |         |
-| `/mock` → 404                       |         |
-| iframe từ origin khác               |         |
+| 4 câu thật                          | ⏳ `curl` qua `/api/chat`: thời tiết (1 tool) ✅, bán chạy + thời tiết (2 tool) ✅. Component trên trình duyệt: user kiểm |
+| Dừng → Render log `cancelled`       | ❌ Dừng trên trình duyệt + `curl -m 2.5` (10:04:05): Render vẫn chạy hết, `[cost] ok steps=2 tools=sales_summary,get_weather … total=4508ms` → huỷ **không** tới FastAPI. Nguyên nhân (docs): Vercel huỷ request là **opt-in** (`supportsCancellation` trong `vercel.json`), mặc định `request.signal` không bao giờ fire. Sửa + kiểm lại: xem Quan sát |
+| DevTools không thấy key             | ⏳ 9 file JS của `/` + `/embed` (603KB): 0 lần `onrender`, `APP_API_KEY`, `X-API-Key`, `BACKEND_URL`, `OPENAI`; `sk-` 1 lần = `mask-type` (không phải key). Tab Network: user kiểm |
+| `/mock` → 404                       | ✅ `GET /mock` → `404`; `POST /api/chat-mock` → `404` |
+| iframe từ origin khác               | ⏳ `curl -I /embed`: không có `X-Frame-Options` / CSP. Nhúng thật: user sửa `embed-test` |
 | Hỏi lúc Render đang ngủ             |         |
 | Câu dài nhất (so với giới hạn 300s) |         |
 
 Quan sát:
+
+- URL: `https://llm-foundations-notes.vercel.app` (deploy 2026-10-26). `/`, `/embed` → `200`; `GET /api/chat` → `405`.
+- Stream qua Vercel (đo `curl -sN … | perl`, ms từ lúc gửi), header `text/event-stream`, `x-accel-buffering: no`:
+  - Thời tiết (câu ngắn): `tool_call` 3485 → `tool_result` 3787 → 36 `delta` trong **2 cục** (4877–4913ms) → `done`
+    5092ms (1019 in / 60 out, $0.000132).
+  - Bán chạy + thời tiết (2 tool): 2 `tool_call` 2054–2490 → 80 `delta` đến ở **30 thời điểm khác nhau** trong 401ms
+    (3727 → 4128) → `done` 4399ms (1273 in / 144 out, $0.000199).
+  - Kết luận: **không bị buffer tới cuối** (tool event đến trước, delta rải ra). Câu ngắn ra 2 cục = model sinh nhanh,
+    mạng gom gói. curl không xin nén → chưa kiểm trường hợp trình duyệt gửi `Accept-Encoding`.
+- **Dừng không tới FastAPI trên Vercel** (local Buổi 11 thì tới). Docs
+  [Functions API — Cancel requests](https://vercel.com/docs/functions/functions-api-reference#cancel-requests):
+  "Cancellation is opt-in" → bật bằng `vercel.json` (đặt ở Root Directory = `web/`), key `functions.<glob>` →
+  `"supportsCancellation": true`. Bật rồi: client ngắt → `request.signal` fire → `fetch` sang Render bị huỷ → function
+  bị **kết thúc** (việc chưa xong mà không bọc `waitUntil` / `after` thì mất) → chỉ bật cho `app/api/chat/route.ts`.
+  Không bật = bấm Dừng vẫn **tốn token OpenAI** cho cả câu.
+- `x-vercel-id: sin1::iad1::…` → vào Vercel ở Singapore (`sin1`), function chạy ở Washington (`iad1`, mặc định).
+- Cold start Render (`curl /health` lúc ngủ): lần 1 52.5s (A2) · lần 2 **72.5s** · lần 3 **63.3s** (2026-10-26) →
+  dao động 50–75s, vẫn < 300s.
 
 ## Bài A4 — IP thật sau proxy
 
