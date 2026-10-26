@@ -3,7 +3,8 @@
 Đề bài: `exercises.md` cùng thư mục.
 
 - [x] A1 chuẩn bị deploy (còn Q6 hard limit OpenAI) · [x] A2 backend Render · [x] A3 frontend Vercel (7/7) ·
-  [x] A4 IP thật (bỏ qua test 2 máy) · [ ] A5 README + GIF (README xong, còn GIF + dọn 2 README cũ)
+  [x] A4 IP thật (bỏ qua test 2 máy) · [x] A5 README (bỏ GIF + dọn 2 README cũ — user: "quan trọng là kiến thức,
+  không phải show kết quả")
 - [ ] B Rebuild test
 
 Link demo:
@@ -27,11 +28,8 @@ _(Claude ghi để mở session mới. Đọc mục này trước, chi tiết t�
 
 **Việc tiếp theo (theo thứ tự)**:
 
-1. Xem README trên GitHub: sơ đồ Mermaid có vẽ ra không; sửa giọng văn nếu cần.
-2. Quay GIF (`Cmd+Shift+5` → GIF < 5MB) → `projects/p1-smart-copilot/docs/demo.gif` → bỏ comment dòng `![Demo]` ở
-   đầu README.
-3. Dọn `web/README.md` (mẫu create-next-app) + `backend/README.md` (rỗng, `pyproject.toml` trỏ tới).
-4. Phần B rebuild test (ngày khác) + 6 câu Exit criteria cuối file.
+1. Phần A xong. GIF + dọn 2 README cũ: **bỏ** (user quyết định 2026-10-26 — ưu tiên kiến thức).
+2. Phần B rebuild test (ngày khác) + 6 câu Exit criteria cuối file (tự viết, không nhìn notes).
 
 **Còn treo**:
 
@@ -342,7 +340,7 @@ Sửa (Claude viết theo yêu cầu, user duyệt plan, 2026-10-26):
 ## Bài A5 — README + GIF
 
 - [x] `projects/p1-smart-copilot/README.md` (bản nháp tiếng Anh, Claude viết theo yêu cầu 2026-10-26, số liệu lấy từ
-  notes Buổi 9–12; chỗ GIF đang comment lại) · [ ] GIF trong `docs/` · [ ] dọn `web/README.md`, `backend/README.md`
+  notes Buổi 9–12; chỗ GIF đang comment lại) · ⏭️ GIF trong `docs/` · ⏭️ dọn `web/README.md`, `backend/README.md` (bỏ, user quyết định)
 - [x] Trước khi quay GIF — bỏ **Markdown thô** (nợ Buổi 11). Chọn cách A (user): thêm vào `instructions` (`main.py`)
   "chỉ văn bản thường, không Markdown; liệt kê mỗi ý 1 dòng bắt đầu '- '". Cách B (render bằng `react-markdown`) không
   làm: thêm dependency. Kiểm local (backend thật + key local): "Thời tiết ở Hà Nội và HCM hôm nay" và "Top 3 sản phẩm
