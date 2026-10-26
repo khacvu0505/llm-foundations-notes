@@ -8,12 +8,17 @@ export async function POST(request: Request) {
 
   // Option A: pass body through as raw text, FastAPI (Pydantic) validates it
   const body = await request.text()
+  // Buổi 12 A4: FastAPI only sees Vercel's outgoing IP (changes per request) → send the user's IP for rate limit.
+  // Safe on Vercel: it OVERWRITES x-forwarded-for with the client IP (docs "Request headers"), clients can't fake it.
+  // Not safe self-hosted: Next only fills it when missing (`??=` in next/dist/server/base-server.js).
+  const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
   try {
     const upstream = await fetch(`${backendUrl}/chat/stream`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-API-Key": appApiKey,
+        ...(clientIp ? { "X-Client-IP": clientIp } : {}),
       },
       body,
       signal: request.signal,

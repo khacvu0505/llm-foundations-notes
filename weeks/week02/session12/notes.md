@@ -290,8 +290,23 @@ Quan sát:
 
 | Máy / mạng      | `req.client.host` | `x-forwarded-for` | Chung bộ đếm? |
 | --------------- | ----------------- | ----------------- | ------------- |
-| Laptop (wifi)   |                   |                   |               |
-| Điện thoại (4G) |                   |                   |               |
+| Laptop (wifi, IP thật `42.116.75.55`) | `32.199.183.79` (whois: **Amazon** = IP đi ra của function Vercel, không phải IP laptop) | `32.199.183.79, 172.71.146.108, 10.194.13.185` | 3 request cuối cùng IP → `hits` 0 → 1 → 2 (có cộng). Nhưng 6 request liên tiếp **không** ra `429` |
+| Điện thoại (4G) | _không đo_ — log đã cho thấy backend chỉ thấy IP Vercel | | |
+
+Nguồn: `print` tạm trong `rate_limit.py` (commit `be3e366`), Claude gửi 6 request `"hi"` qua Vercel lúc 12:09:34–12:09:47
+(#1 kèm header giả `X-Forwarded-For: 9.9.9.9`), user dán log Render.
+
+- 3 dòng log user dán có `out=17, 17, 10` → khớp request **#4, #5, #6** (curl thấy out 10,10,10,17,17,10). #4 có
+  `hits=0` → #1–#3 (trong cùng 10s) **không** được đếm vào IP `32.199.183.79` → _suy luận, chưa thấy log #1–#3_: IP đi
+  ra của Vercel **đổi giữa các request** → mỗi IP một bộ đếm → 6 lần vẫn lọt. Tức là rate limit sau Vercel vừa sai
+  (không theo user) vừa gần như vô tác dụng.
+- `xff` có 3 chặng: `32.199.183.79` (Vercel, AWS) → `172.71.x` / `104.22.x` (whois: **Cloudflare**, lớp trước Render) →
+  `10.x` (nội bộ Render). Backend lấy chặng **đầu tiên**.
+- Vì sao lấy chặng đầu (đọc code uvicorn 0.54.0): `fastapi run` bật `proxy_headers=True`, `forwarded_allow_ips=None`
+  (`fastapi_cli/cli.py:356-367`) → uvicorn đọc env `FORWARDED_ALLOW_IPS`, mặc định `127.0.0.1,::1`
+  (`uvicorn/config.py:363`). Mình **không** đặt env này. Với `'*'` uvicorn lấy luôn phần tử đầu của XFF
+  (`proxy_headers.py:176-177`); không thì đi từ phải sang trái, lấy IP đầu tiên không được tin. Ra phần tử đầu → _giả
+  thuyết_: Render tự đặt `FORWARDED_ALLOW_IPS` (có thể `*`) — chưa kiểm được env trên Render.
 
 Sau khi sửa:
 
@@ -299,10 +314,26 @@ Sau khi sửa:
 | --------------------------------------- | ------- |
 | 2 máy → 2 bộ đếm riêng                  |         |
 | `curl` thẳng Render, IP giả, không key  |         |
-| pytest "2 IP không chung lượt"          |         |
+| pytest "2 IP không chung lượt"          | ✅ `test_rate_limit_counts_per_client_ip` (1.1.1.1: 5×200 rồi 429; 2.2.2.2 vẫn 200) + `test_client_ip_header_without_key_is_401` (IP giả không key → 401, không vào `_hits`). pytest 12/12, ruff / format / pyright sạch |
+
+Sửa (Claude viết theo yêu cầu, user duyệt plan, 2026-10-26):
+
+- `route.ts`: lấy IP đầu tiên trong `x-forwarded-for` → gửi FastAPI header riêng **`X-Client-IP`** (không có thì không
+  gửi). Không chuyển nguyên `X-Forwarded-For`: sẽ phụ thuộc cách Render / uvicorn xử lý XFF (chưa rõ env trên Render).
+- `rate_limit.py`: hàm `client_ip()` — `X-Client-IP` đúng dạng IP (`ipaddress.ip_address`, chuẩn hoá) → đếm theo nó;
+  thiếu / sai dạng → về `req.client.host` như cũ. Bỏ `print` tạm.
 
 - Vì sao tin được header IP từ Next mà không tin `X-Forwarded-For` từ trình duyệt:
-- `--forwarded-allow-ips` để làm gì, vì sao `'*'` nguy hiểm:
+  - Phía Next: Vercel **ghi đè** `x-forwarded-for` bằng IP client, không chuyển giá trị client tự gửi
+    ([Request headers](https://vercel.com/docs/headers/request-headers)). Tự host Next thì **không** an toàn: Next chỉ
+    điền khi thiếu (`??=`, `next/dist/server/base-server.js:567`) → client tự gửi là giả được.
+  - Phía FastAPI: `dependencies=[Depends(verify_api_key), Depends(rate_limit)]` (`main.py:158`) → key sai / thiếu là
+    `401` trước khi đếm → chỉ ai có `APP_API_KEY` (= Next server) mới đặt được `X-Client-IP` có tác dụng.
+  - Thiếu header → đếm theo IP kết nối (local, test).
+- `--forwarded-allow-ips` để làm gì, vì sao `'*'` nguy hiểm: danh sách IP proxy được tin để uvicorn đọc
+  `X-Forwarded-For` làm IP client (mặc định `127.0.0.1,::1`, `uvicorn/config.py:363`). Với `'*'` uvicorn lấy **phần tử
+  đầu** XFF (`proxy_headers.py:176-177`) — phần tử này do **người gửi đầu tiên** tự ghi → ai gọi thẳng cũng tự đặt IP
+  được → né rate limit, ghi log sai IP. Không `'*'`: đi từ phải sang trái, dừng ở IP đầu tiên không phải proxy tin cậy.
 
 ## Bài A5 — README + GIF
 
