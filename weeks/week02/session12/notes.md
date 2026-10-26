@@ -2,7 +2,8 @@
 
 Đề bài: `exercises.md` cùng thư mục.
 
-- [x] A1 chuẩn bị deploy (còn Q6 dashboard OpenAI) · [x] A2 backend Render · [ ] A3 frontend Vercel · [ ] A4 IP thật · [ ] A5 README + GIF
+- [x] A1 chuẩn bị deploy (còn Q6 hard limit OpenAI) · [x] A2 backend Render · [ ] A3 frontend Vercel (6/7, còn test
+  Render ngủ) · [ ] A4 IP thật · [ ] A5 README + GIF
 - [ ] B Rebuild test
 
 Link demo:
@@ -180,13 +181,21 @@ Nguồn: [Managing projects](https://help.openai.com/en/articles/9186755-managin
   (`project_spend_limit_exceeded`). Chặn không tức thì → có thể vượt nhẹ.
 - Project bị chặn không ảnh hưởng project khác (key local vẫn chạy).
 - Thêm: đặt **ngày hết hạn** cho key prod (tính năng mới của project key).
-- Liên quan code: OpenAI trả `429` khi hết budget → backend báo lỗi gì cho user? (kiểm ở A2/A3).
+- Liên quan code: OpenAI trả `429` khi hết budget → backend báo lỗi gì cho user? _Đọc code, chưa test_: SDK tự retry
+  (`max_retries=2`, `llm.py:6`) rồi ném `RateLimitError` (con của `openai.APIError`) → `main.py:136` bắt → SSE `error`
+  "Có lỗi khi tạo câu trả lời, thử lại sau".
+- Cách đặt (kiểm lại 2026-10-26, [OpenAI Spend limits](https://developers.openai.com/api/docs/guides/spend-limits.md)):
+  Project settings → **Limits** → Spend → **Edit spend limit** → Monthly spend limit → bật **Enforce a hard limit** →
+  Save. Lỗi khi vượt: `429` `project_spend_limit_exceeded`. Reset theo chu kỳ tháng.
 
 Việc còn lại (dashboard):
 
 - [x] Key trên Render **khác** key local (user xác nhận, 2026-10-26)
 - [~] ~~Key đó nằm trong project OpenAI riêng cho prod~~ — **bỏ qua** (user quyết định, 2026-10-26)
-- [ ] Bật hard limit theo tháng cho project (mức tự chọn, vd vài $) + alert
+- [ ] Bật hard limit theo tháng cho project (mức tự chọn, vd vài $) + alert — **tạm dừng** (user, 2026-10-26).
+  Đã biết: cả 10 key (kể cả key prod "Smart Copilot" `sk-...sU4A`, tạo 25/10) đều trong **Default project** → limit đặt
+  ở đây chặn luôn key local. Chỗ đặt: Settings → Limits (không phải Render: dialog "purchase minutes" là build minutes
+  của Render)
 
 ## Bài A2 — Backend trên Render
 
@@ -247,13 +256,13 @@ Root Directory: `projects/p1-smart-copilot/web` · Env: `BACKEND_URL`, `APP_API_
 
 | Thử                                 | Kết quả |
 | ----------------------------------- | ------- |
-| 4 câu thật                          | ⏳ `curl` qua `/api/chat`: thời tiết (1 tool) ✅, bán chạy + thời tiết (2 tool) ✅. Component trên trình duyệt: user kiểm |
-| Dừng → Render log `cancelled`       | ❌ Dừng trên trình duyệt + `curl -m 2.5` (10:04:05): Render vẫn chạy hết, `[cost] ok steps=2 tools=sales_summary,get_weather … total=4508ms` → huỷ **không** tới FastAPI. Nguyên nhân (docs): Vercel huỷ request là **opt-in** (`supportsCancellation` trong `vercel.json`), mặc định `request.signal` không bao giờ fire. Sửa + kiểm lại: xem Quan sát |
-| DevTools không thấy key             | ⏳ 9 file JS của `/` + `/embed` (603KB): 0 lần `onrender`, `APP_API_KEY`, `X-API-Key`, `BACKEND_URL`, `OPENAI`; `sk-` 1 lần = `mask-type` (không phải key). Tab Network: user kiểm |
+| 4 câu thật                          | ✅ Trình duyệt (user): 4 câu (đơn của Chi đang giao / bán chạy / thời tiết Đà Nẵng / doanh thu theo ngày + thời tiết TP.HCM) đều ra kết quả. `curl` qua `/api/chat`: 1 tool + 2 tool đều đủ event |
+| Dừng → Render log `cancelled`       | ❌ Dừng trên trình duyệt: Render log không có `cancelled`. `curl -m 2.5` (10:04:05, Claude test, user xác nhận đúng dòng log): Render vẫn chạy hết, `[cost] ok steps=2 tools=sales_summary,get_weather … total=4508ms` → huỷ **không** tới FastAPI. Nguyên nhân (docs): Vercel huỷ request là **opt-in** (`supportsCancellation` trong `vercel.json`), mặc định `request.signal` không bao giờ fire. ✅ **Sau khi sửa** (commit `c26f72b`, ngắt ngay sau `tool_result` đầu, 2919ms, 10:10:11): `[stream cancelled] sau 0 delta` + `[cost] cancelled steps=2 … in=475 out=55 $0.000075 ttft=- total=2776ms` (trước: chạy hết, $0.000315) |
+| DevTools không thấy key             | ✅ 9 file JS của `/` + `/embed` (603KB): 0 lần `onrender`, `APP_API_KEY`, `X-API-Key`, `BACKEND_URL`, `OPENAI`; `sk-` 1 lần = `mask-type` (không phải key). Tab Network (user): hỏi 1 câu chỉ thấy `https://llm-foundations-notes.vercel.app/api/chat` |
 | `/mock` → 404                       | ✅ `GET /mock` → `404`; `POST /api/chat-mock` → `404` |
-| iframe từ origin khác               | ⏳ `curl -I /embed`: không có `X-Frame-Options` / CSP. Nhúng thật: user sửa `embed-test` |
+| iframe từ origin khác               | ✅ `curl -I /embed`: không có `X-Frame-Options` / CSP. Nhúng thật: `embed-test/index.html` `src` → Vercel `/embed` (Claude sửa theo yêu cầu), mở `localhost:5500`, hỏi "Thời tiết ở Hà Nội và HCM hôm nay" → 2 `WeatherCard` + chữ trong iframe. Vẫn thấy **Markdown thô** (`**Hà Nội:**`, `*Cập nhật…*`) — nợ Buổi 11, nên sửa trước khi quay GIF (A5) |
 | Hỏi lúc Render đang ngủ             |         |
-| Câu dài nhất (so với giới hạn 300s) |         |
+| Câu dài nhất (so với giới hạn 300s) | ✅ Đo được: dài nhất ~4.5s (Render thức, 2 tool). Cộng cold start 50–75s → < 80s, xa 300s. _Ước tính, chưa đo_: ca xấu nhất `MAX_STEPS = 5` (`tools.py:248`) × OpenAI `timeout=30`, `max_retries=2` (`llm.py:6`) có thể vượt 300s → Vercel `504` — hiếm |
 
 Quan sát:
 
