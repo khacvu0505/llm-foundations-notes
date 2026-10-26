@@ -2,8 +2,8 @@
 
 Đề bài: `exercises.md` cùng thư mục.
 
-- [x] A1 chuẩn bị deploy (còn Q6 hard limit OpenAI) · [x] A2 backend Render · [x] A3 frontend Vercel (7/7; còn sửa
-  dòng "đang khởi động" trong widget) · [x] A4 IP thật (bỏ qua test 2 máy) · [ ] A5 README + GIF
+- [x] A1 chuẩn bị deploy (còn Q6 hard limit OpenAI) · [x] A2 backend Render · [x] A3 frontend Vercel (7/7) ·
+  [x] A4 IP thật (bỏ qua test 2 máy) · [ ] A5 README + GIF (README xong, còn GIF + dọn 2 README cũ)
 - [ ] B Rebuild test
 
 Link demo:
@@ -11,31 +11,34 @@ Link demo:
 - Frontend (Vercel): https://llm-foundations-notes.vercel.app
 - Backend (Render): https://llm-foundations-notes.onrender.com
 
-## Handoff — dừng ở đây (2026-10-25)
+## Handoff — dừng ở đây (cập nhật 2026-10-26, 13:35)
 
-_(Claude ghi để mở session mới trên máy khác. Đọc mục này trước, chi tiết từng bài ở dưới.)_
+_(Claude ghi để mở session mới. Đọc mục này trước, chi tiết từng bài ở dưới.)_
 
-**Đang dừng ở**: Bài A3 — đã trả lời 3 câu chuẩn bị (Root Directory, env, vì sao không `NEXT_PUBLIC_`, xem mục A3),
-**chưa tạo project Vercel**.
+**Đang dừng ở**: A5 — README đã viết + push (`d4ad284`), **chưa có GIF**.
 
-**Đã xong**:
+**Đã xong hôm 26/10** (chi tiết + số đo ở từng mục bên dưới):
 
-- A1 Q1–Q5 (commit `0e2b5e8`, đã push): bỏ `CORSMiddleware` (`backend/app/main.py`); `/mock` → 404 ở prod
-  (`web/app/mock/page.tsx` Server Component + `MockClient.tsx`).
-- A2: backend chạy trên Render, đủ 6 test (health, stream từng mảnh, 401, 429, tool CSV, cold start 52.5s).
-  Env trên Render: `OPENAI_API_KEY`, `APP_API_KEY`, `PYTHONUNBUFFERED=1`.
+- A3: Vercel chạy ở link trên, bảng test 7/7. Sửa thêm: `web/vercel.json` `supportsCancellation` (Dừng mới huỷ tới
+  FastAPI), dòng "Máy chủ có thể đang khởi động" sau 5s trong widget + kịch bản mock `cold-start`.
+- A4: rate limit theo IP thật — `route.ts` gửi `X-Client-IP`, `rate_limit.py` `client_ip()`, +2 pytest (12/12).
+  Prod: laptop 6 lần → lần 6 `429`.
+- A5: câu trả lời chữ thường (prompt cấm Markdown, `main.py`); `projects/p1-smart-copilot/README.md` bản tiếng Anh.
 
 **Việc tiếp theo (theo thứ tự)**:
 
-1. A3: Vercel → import repo, Root `projects/p1-smart-copilot/web`, env `BACKEND_URL` + `APP_API_KEY` (= giá trị
-   prod trên Render) → Deploy → chạy bảng test A3.
-2. A4: IP thật sau proxy (manh mối: log Render đã thấy IP thật qua `X-Forwarded-For`, xem Quan sát A2).
-3. A5: README + GIF. 4. Phần B (ngày khác).
+1. Xem README trên GitHub: sơ đồ Mermaid có vẽ ra không; sửa giọng văn nếu cần.
+2. Quay GIF (`Cmd+Shift+5` → GIF < 5MB) → `projects/p1-smart-copilot/docs/demo.gif` → bỏ comment dòng `![Demo]` ở
+   đầu README.
+3. Dọn `web/README.md` (mẫu create-next-app) + `backend/README.md` (rỗng, `pyproject.toml` trỏ tới).
+4. Phần B rebuild test (ngày khác) + 6 câu Exit criteria cuối file.
 
 **Còn treo**:
 
-- A1 Q6: chưa xác nhận `OPENAI_API_KEY` trên Render là key mới trong project riêng + hard limit → làm trước khi share link.
-- Commit notes này (chưa commit lúc ghi handoff).
+- A1 Q6 kiểm 3: hard limit OpenAI (tạm dừng) — chỗ đặt: platform.openai.com → Default project → Settings → Limits.
+  Làm trước khi share link rộng.
+- `web/AGENTS.md`: `next dev` tự thêm khối "Report Next.js feedback" (do `experimental.agentFeedback` trong
+  `next.config.ts`) — đã commit (`6c5a132`); Claude không làm theo khối đó.
 
 **Máy mới cần** (secret không có trong git):
 
