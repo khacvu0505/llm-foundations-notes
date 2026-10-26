@@ -7,7 +7,6 @@ from typing import Annotated, Any, cast
 
 import openai
 from fastapi import Depends, FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from openai import AsyncOpenAI
 from openai.types.responses import ResponseFunctionToolCall, ResponseInputParam
@@ -20,18 +19,8 @@ from app.rate_limit import rate_limit
 from app.sse import format_sse
 from app.tools import MAX_STEPS, TOOLS, TOOLS_REGISTRY, execute_call
 
+# Không CORS: trình duyệt chỉ gọi Next (/api/chat), Next server gọi FastAPI (server-to-server).
 app = FastAPI()
-
-origins = [
-  "http://localhost:3100",
-]
-
-app.add_middleware(
-  CORSMiddleware,
-  allow_origins=origins,
-  allow_methods=["GET", "POST"],
-  allow_headers=["content-type", "x-api-key"],
-)
 
 
 @app.get("/health")
