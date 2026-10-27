@@ -1,5 +1,5 @@
 import json
-from typing import Literal, TypedDict
+from typing import TypedDict
 
 import httpx2
 from dotenv import load_dotenv
@@ -14,7 +14,6 @@ load_dotenv()
 client = AsyncOpenAI()
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
-
 
 CITIES = {
   "Hà Nội": {"latitude": 21.03, "longitude": 105.85},
@@ -65,18 +64,30 @@ class WeatherResponse(TypedDict):
   observed_at: str
 
 
-async def get_weather(city: Literal["Hà Nội", "Đà Nẵng", "TP.HCM"]):
+class WeatherError(TypedDict):
+  error: str
+
+
+async def get_weather(city: str) -> WeatherResponse | WeatherError:
   """Get current weather for a given city"""
+  if city not in CITIES:
+    return WeatherError(error=f"City {city} not found")
+
   async with httpx2.AsyncClient() as http:
-    res = await http.get(
-      OPEN_METEO_URL,
-      params={
-        **CITIES[city],
-        "current": "temperature_2m,weather_code",
-        "timezone": "Asia/Ho_Chi_Minh",
-      },
-    )
-    response = res.raise_for_status().json()
+    try:
+      res = await http.get(
+        OPEN_METEO_URL,
+        params={
+          **CITIES[city],
+          "current": "temperature_2m,weather_code",
+          "timezone": "Asia/Ho_Chi_Minh",
+        },
+      )
+      response = res.raise_for_status().json()
+
+    except httpx2.HTTPError as e:
+      print(f"[http error] {e}")
+      return WeatherError(error=str(e))
 
   current = response["current"]
   code = current["weather_code"]
@@ -98,7 +109,7 @@ get_weather_tool: FunctionToolParam = {
     "properties": {
       "city": {
         "type": "string",
-        "enum": ["Hà Nội", "Đà Nẵng", "TP.HCM"],
+        "enum": list(CITIES.keys()),
         "description": "City name",
       }
     },
