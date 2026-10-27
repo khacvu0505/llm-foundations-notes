@@ -14,6 +14,11 @@ const SCENARIOS = [
       "“Đang trả lời…” → “Đang xem thời tiết…” → card → chữ chảy → usage 0 token",
   },
   {
+    id: "cold-start",
+    label: "Cold start",
+    expect: "0–5s “Đang trả lời…” → 5s hiện thêm “Máy chủ có thể đang khởi động” → 8s ra card, 2 dòng biến mất",
+  },
+  {
     id: "tool-error",
     label: "Tool lỗi",
     expect: "cảnh báo nhỏ dưới tool, chữ vẫn chảy, kết thúc bằng usage",

@@ -131,7 +131,12 @@ export function ChatWidget({ endpoint = "/api/chat" }: { endpoint?: string }) {
                 <div key={m.id} className="flex flex-col gap-2">
                   {/* trước part đầu tiên (1.4–3.9s, notes Bài 2–3) → không để trống; có tool rồi thì ToolView tự hiện "Đang tra…" */}
                   {m.status === "streaming" && m.message.parts.length === 0 && (
-                    <p className="animate-pulse text-zinc-500">Đang trả lời…</p>
+                    <>
+                      <p className="animate-pulse text-zinc-500">Đang trả lời…</p>
+                      {/* Buổi 12 A3: Render free ngủ sau 15ph, dậy mất 50–75s. Bình thường event đầu tới ở 2–3.5s
+                          → 5s chưa có gì thì báo. CSS delay (globals.css), không timer: có event là cả khối tự biến mất */}
+                      <p className="animate-appear-late text-xs text-zinc-500">Máy chủ có thể đang khởi động (~1 phút)…</p>
+                    </>
                   )}
                   {m.message.parts.map((p, i) =>
                     p.type === "text" ? (

@@ -3,7 +3,7 @@
   Claude viết theo yêu cầu, 2026-10-20 — Bài 4 bước 8: trang "của người khác" nhúng widget bằng <iframe>.
   Chạy (từ thư mục p1-smart-copilot/), CHỈ serve thư mục này — serve thư mục cha là lộ backend/.env:
     python3 -m http.server 5500 --bind 127.0.0.1 --directory embed-test
-  Mở http://localhost:5500 → origin :5500, widget ở :3100 → khác origin (khác port).
+  Mở http://localhost:5500 → origin :5500, widget ở Vercel (local: :3100) → khác origin.
 -->
 <html lang="vi">
   <head>
@@ -39,10 +39,11 @@
     <main>
       <h1>Quán Cà Phê Demo</h1>
       <p>Trang này chạy ở <code>localhost:5500</code>, không phải Next.js. Widget nằm trong iframe trỏ tới
-        <code>localhost:3100/embed</code>.</p>
+        <code>llm-foundations-notes.vercel.app/embed</code>.</p>
       <p>Bấm bong bóng 💬 góc phải dưới để hỏi về đơn hàng, doanh thu hoặc thời tiết.</p>
     </main>
 
-    <iframe id="copilot" src="http://localhost:3100/embed" title="Smart Copilot"></iframe>
+    <!-- Buổi 12 A3: trỏ sang bản prod trên Vercel. Chạy local thì đổi lại http://localhost:3100/embed -->
+    <iframe id="copilot" src="https://llm-foundations-notes.vercel.app/embed" title="Smart Copilot"></iframe>
   </body>
 </html>

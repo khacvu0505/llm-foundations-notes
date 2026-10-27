@@ -2,39 +2,41 @@
 
 Đề bài: `exercises.md` cùng thư mục.
 
-- [x] A1 chuẩn bị deploy (còn Q6 dashboard OpenAI) · [x] A2 backend Render · [ ] A3 frontend Vercel · [ ] A4 IP thật · [ ] A5 README + GIF
+- [x] A1 chuẩn bị deploy (còn Q6 hard limit OpenAI) · [x] A2 backend Render · [x] A3 frontend Vercel (7/7) ·
+  [x] A4 IP thật (bỏ qua test 2 máy) · [x] A5 README (bỏ GIF + dọn 2 README cũ — user: "quan trọng là kiến thức,
+  không phải show kết quả")
 - [ ] B Rebuild test
 
 Link demo:
 
-- Frontend (Vercel):
+- Frontend (Vercel): https://llm-foundations-notes.vercel.app
 - Backend (Render): https://llm-foundations-notes.onrender.com
 
-## Handoff — dừng ở đây (2026-10-25)
+## Handoff — dừng ở đây (cập nhật 2026-10-26, 13:35)
 
-_(Claude ghi để mở session mới trên máy khác. Đọc mục này trước, chi tiết từng bài ở dưới.)_
+_(Claude ghi để mở session mới. Đọc mục này trước, chi tiết từng bài ở dưới.)_
 
-**Đang dừng ở**: Bài A3 — đã trả lời 3 câu chuẩn bị (Root Directory, env, vì sao không `NEXT_PUBLIC_`, xem mục A3),
-**chưa tạo project Vercel**.
+**Đang dừng ở**: A5 — README đã viết + push (`d4ad284`), **chưa có GIF**.
 
-**Đã xong**:
+**Đã xong hôm 26/10** (chi tiết + số đo ở từng mục bên dưới):
 
-- A1 Q1–Q5 (commit `0e2b5e8`, đã push): bỏ `CORSMiddleware` (`backend/app/main.py`); `/mock` → 404 ở prod
-  (`web/app/mock/page.tsx` Server Component + `MockClient.tsx`).
-- A2: backend chạy trên Render, đủ 6 test (health, stream từng mảnh, 401, 429, tool CSV, cold start 52.5s).
-  Env trên Render: `OPENAI_API_KEY`, `APP_API_KEY`, `PYTHONUNBUFFERED=1`.
+- A3: Vercel chạy ở link trên, bảng test 7/7. Sửa thêm: `web/vercel.json` `supportsCancellation` (Dừng mới huỷ tới
+  FastAPI), dòng "Máy chủ có thể đang khởi động" sau 5s trong widget + kịch bản mock `cold-start`.
+- A4: rate limit theo IP thật — `route.ts` gửi `X-Client-IP`, `rate_limit.py` `client_ip()`, +2 pytest (12/12).
+  Prod: laptop 6 lần → lần 6 `429`.
+- A5: câu trả lời chữ thường (prompt cấm Markdown, `main.py`); `projects/p1-smart-copilot/README.md` bản tiếng Anh.
 
 **Việc tiếp theo (theo thứ tự)**:
 
-1. A3: Vercel → import repo, Root `projects/p1-smart-copilot/web`, env `BACKEND_URL` + `APP_API_KEY` (= giá trị
-   prod trên Render) → Deploy → chạy bảng test A3.
-2. A4: IP thật sau proxy (manh mối: log Render đã thấy IP thật qua `X-Forwarded-For`, xem Quan sát A2).
-3. A5: README + GIF. 4. Phần B (ngày khác).
+1. Phần A xong. GIF + dọn 2 README cũ: **bỏ** (user quyết định 2026-10-26 — ưu tiên kiến thức).
+2. Phần B rebuild test (ngày khác) + 6 câu Exit criteria cuối file (tự viết, không nhìn notes).
 
 **Còn treo**:
 
-- A1 Q6: chưa xác nhận `OPENAI_API_KEY` trên Render là key mới trong project riêng + hard limit → làm trước khi share link.
-- Commit notes này (chưa commit lúc ghi handoff).
+- A1 Q6 kiểm 3: hard limit OpenAI (tạm dừng) — chỗ đặt: platform.openai.com → Default project → Settings → Limits.
+  Làm trước khi share link rộng.
+- `web/AGENTS.md`: `next dev` tự thêm khối "Report Next.js feedback" (do `experimental.agentFeedback` trong
+  `next.config.ts`) — đã commit (`6c5a132`); Claude không làm theo khối đó.
 
 **Máy mới cần** (secret không có trong git):
 
@@ -180,12 +182,21 @@ Nguồn: [Managing projects](https://help.openai.com/en/articles/9186755-managin
   (`project_spend_limit_exceeded`). Chặn không tức thì → có thể vượt nhẹ.
 - Project bị chặn không ảnh hưởng project khác (key local vẫn chạy).
 - Thêm: đặt **ngày hết hạn** cho key prod (tính năng mới của project key).
-- Liên quan code: OpenAI trả `429` khi hết budget → backend báo lỗi gì cho user? (kiểm ở A2/A3).
+- Liên quan code: OpenAI trả `429` khi hết budget → backend báo lỗi gì cho user? _Đọc code, chưa test_: SDK tự retry
+  (`max_retries=2`, `llm.py:6`) rồi ném `RateLimitError` (con của `openai.APIError`) → `main.py:136` bắt → SSE `error`
+  "Có lỗi khi tạo câu trả lời, thử lại sau".
+- Cách đặt (kiểm lại 2026-10-26, [OpenAI Spend limits](https://developers.openai.com/api/docs/guides/spend-limits.md)):
+  Project settings → **Limits** → Spend → **Edit spend limit** → Monthly spend limit → bật **Enforce a hard limit** →
+  Save. Lỗi khi vượt: `429` `project_spend_limit_exceeded`. Reset theo chu kỳ tháng.
 
 Việc còn lại (dashboard):
 
-- [ ] Tạo project prod + key mới (có hạn) → dán vào Environment trên Render
-- [ ] Bật hard limit theo tháng cho project (mức tự chọn, vd vài $) + alert
+- [x] Key trên Render **khác** key local (user xác nhận, 2026-10-26)
+- [~] ~~Key đó nằm trong project OpenAI riêng cho prod~~ — **bỏ qua** (user quyết định, 2026-10-26)
+- [ ] Bật hard limit theo tháng cho project (mức tự chọn, vd vài $) + alert — **tạm dừng** (user, 2026-10-26).
+  Đã biết: cả 10 key (kể cả key prod "Smart Copilot" `sk-...sU4A`, tạo 25/10) đều trong **Default project** → limit đặt
+  ở đây chặn luôn key local. Chỗ đặt: Settings → Limits (không phải Render: dialog "purchase minutes" là build minutes
+  của Render)
 
 ## Bài A2 — Backend trên Render
 
@@ -234,19 +245,45 @@ Root Directory: `projects/p1-smart-copilot/web` · Env: `BACKEND_URL`, `APP_API_
 - Không dùng `NEXT_PUBLIC_`: biến có prefix này bị **inline vào JS bundle lúc `next build`** → ai mở DevTools / Sources cũng
   đọc được key (`node_modules/next/dist/docs/01-app/02-guides/self-hosting.md:39`). Không prefix → chỉ có ở server
   (Route Handler), trình duyệt không thấy.
-- pnpm: Vercel nhận theo `pnpm-lock.yaml` / `packageManager: pnpm@10.31.0` — kiểm dòng install trong build log.
+- pnpm: Vercel chọn theo **lockfile**, **không** theo `packageManager` (field này chỉ dùng khi bật Corepack).
+  `lockfileVersion: '9.0'` → pnpm 9 hoặc 10 (project mới ưu tiên 10) → kiểm dòng install trong build log.
+  Nguồn: [Vercel Package Managers](https://vercel.com/docs/package-managers).
+- Giới hạn Hobby (Fluid compute): default = max = **300s**, tính cả thời gian **stream**; quá → `504`
+  `FUNCTION_INVOCATION_TIMEOUT`. Function chạy ở `iad1` mặc định. Nguồn:
+  [Functions limits](https://vercel.com/docs/functions/limitations).
+- Deployment Protection (Standard, mặc định): URL **production** (`<project>.vercel.app`) public; URL riêng từng deploy
+  (`<project>-<hash>-….vercel.app`) bắt đăng nhập Vercel → share / iframe dùng URL production. Nguồn:
+  [Deployment Protection](https://vercel.com/docs/deployment-protection).
 
 | Thử                                 | Kết quả |
 | ----------------------------------- | ------- |
-| 4 câu thật                          |         |
-| Dừng → Render log `cancelled`       |         |
-| DevTools không thấy key             |         |
-| `/mock` → 404                       |         |
-| iframe từ origin khác               |         |
-| Hỏi lúc Render đang ngủ             |         |
-| Câu dài nhất (so với giới hạn 300s) |         |
+| 4 câu thật                          | ✅ Trình duyệt (user): 4 câu (đơn của Chi đang giao / bán chạy / thời tiết Đà Nẵng / doanh thu theo ngày + thời tiết TP.HCM) đều ra kết quả. `curl` qua `/api/chat`: 1 tool + 2 tool đều đủ event |
+| Dừng → Render log `cancelled`       | ❌ Dừng trên trình duyệt: Render log không có `cancelled`. `curl -m 2.5` (10:04:05, Claude test, user xác nhận đúng dòng log): Render vẫn chạy hết, `[cost] ok steps=2 tools=sales_summary,get_weather … total=4508ms` → huỷ **không** tới FastAPI. Nguyên nhân (docs): Vercel huỷ request là **opt-in** (`supportsCancellation` trong `vercel.json`), mặc định `request.signal` không bao giờ fire. ✅ **Sau khi sửa** (commit `c26f72b`, ngắt ngay sau `tool_result` đầu, 2919ms, 10:10:11): `[stream cancelled] sau 0 delta` + `[cost] cancelled steps=2 … in=475 out=55 $0.000075 ttft=- total=2776ms` (trước: chạy hết, $0.000315) |
+| DevTools không thấy key             | ✅ 9 file JS của `/` + `/embed` (603KB): 0 lần `onrender`, `APP_API_KEY`, `X-API-Key`, `BACKEND_URL`, `OPENAI`; `sk-` 1 lần = `mask-type` (không phải key). Tab Network (user): hỏi 1 câu chỉ thấy `https://llm-foundations-notes.vercel.app/api/chat` |
+| `/mock` → 404                       | ✅ `GET /mock` → `404`; `POST /api/chat-mock` → `404` |
+| iframe từ origin khác               | ✅ `curl -I /embed`: không có `X-Frame-Options` / CSP. Nhúng thật: `embed-test/index.html` `src` → Vercel `/embed` (Claude sửa theo yêu cầu), mở `localhost:5500`, hỏi "Thời tiết ở Hà Nội và HCM hôm nay" → 2 `WeatherCard` + chữ trong iframe. Vẫn thấy **Markdown thô** (`**Hà Nội:**`, `*Cập nhật…*`) — nợ Buổi 11, nên sửa trước khi quay GIF (A5) |
+| Hỏi lúc Render đang ngủ             | ✅ Có ra kết quả (user, ~10:55, không bấm giờ; cold start `curl /health` đo được 50–75s). Suốt lúc chờ widget chỉ hiện **"Đang trả lời…"** (`ChatWidget.tsx:134`) giống câu thường → dễ tưởng treo. Quyết định: sau **5s** chưa có event thì hiện thêm dòng "Máy chủ có thể đang khởi động (~1 phút)…" — CSS `animation-delay`, không thêm state. ✅ Đã sửa (Claude viết theo yêu cầu): `globals.css` `--animate-appear-late` (delay 5s, fill `both`) + `<p>` thứ 2 trong `ChatWidget.tsx` + kịch bản mock `cold-start` (event đầu sau 8s). Kiểm: lint / tsc sạch, vitest 15/15, dev CSS có class + `@keyframes appear`, mock `tool_call` tới ở 8098ms. Đã deploy (`69ddd72`): CSS prod có `animate-appear-late` + `@keyframes appear`, JS có câu "Máy chủ có thể đang khởi động" |
+| Câu dài nhất (so với giới hạn 300s) | ✅ Đo được: dài nhất ~4.5s (Render thức, 2 tool). Cộng cold start 50–75s → < 80s, xa 300s. _Ước tính, chưa đo_: ca xấu nhất `MAX_STEPS = 5` (`tools.py:248`) × OpenAI `timeout=30`, `max_retries=2` (`llm.py:6`) có thể vượt 300s → Vercel `504` — hiếm |
 
 Quan sát:
+
+- URL: `https://llm-foundations-notes.vercel.app` (deploy 2026-10-26). `/`, `/embed` → `200`; `GET /api/chat` → `405`.
+- Stream qua Vercel (đo `curl -sN … | perl`, ms từ lúc gửi), header `text/event-stream`, `x-accel-buffering: no`:
+  - Thời tiết (câu ngắn): `tool_call` 3485 → `tool_result` 3787 → 36 `delta` trong **2 cục** (4877–4913ms) → `done`
+    5092ms (1019 in / 60 out, $0.000132).
+  - Bán chạy + thời tiết (2 tool): 2 `tool_call` 2054–2490 → 80 `delta` đến ở **30 thời điểm khác nhau** trong 401ms
+    (3727 → 4128) → `done` 4399ms (1273 in / 144 out, $0.000199).
+  - Kết luận: **không bị buffer tới cuối** (tool event đến trước, delta rải ra). Câu ngắn ra 2 cục = model sinh nhanh,
+    mạng gom gói. curl không xin nén → chưa kiểm trường hợp trình duyệt gửi `Accept-Encoding`.
+- **Dừng không tới FastAPI trên Vercel** (local Buổi 11 thì tới). Docs
+  [Functions API — Cancel requests](https://vercel.com/docs/functions/functions-api-reference#cancel-requests):
+  "Cancellation is opt-in" → bật bằng `vercel.json` (đặt ở Root Directory = `web/`), key `functions.<glob>` →
+  `"supportsCancellation": true`. Bật rồi: client ngắt → `request.signal` fire → `fetch` sang Render bị huỷ → function
+  bị **kết thúc** (việc chưa xong mà không bọc `waitUntil` / `after` thì mất) → chỉ bật cho `app/api/chat/route.ts`.
+  Không bật = bấm Dừng vẫn **tốn token OpenAI** cho cả câu.
+- `x-vercel-id: sin1::iad1::…` → vào Vercel ở Singapore (`sin1`), function chạy ở Washington (`iad1`, mặc định).
+- Cold start Render (`curl /health` lúc ngủ): lần 1 52.5s (A2) · lần 2 **72.5s** · lần 3 **63.3s** (2026-10-26) →
+  dao động 50–75s, vẫn < 300s.
 
 ## Bài A4 — IP thật sau proxy
 
@@ -254,23 +291,60 @@ Quan sát:
 
 | Máy / mạng      | `req.client.host` | `x-forwarded-for` | Chung bộ đếm? |
 | --------------- | ----------------- | ----------------- | ------------- |
-| Laptop (wifi)   |                   |                   |               |
-| Điện thoại (4G) |                   |                   |               |
+| Laptop (wifi, IP thật `42.116.75.55`) | `32.199.183.79` (whois: **Amazon** = IP đi ra của function Vercel, không phải IP laptop) | `32.199.183.79, 172.71.146.108, 10.194.13.185` | 3 request cuối cùng IP → `hits` 0 → 1 → 2 (có cộng). Nhưng 6 request liên tiếp **không** ra `429` |
+| Điện thoại (4G) | _không đo_ — log đã cho thấy backend chỉ thấy IP Vercel | | |
+
+Nguồn: `print` tạm trong `rate_limit.py` (commit `be3e366`), Claude gửi 6 request `"hi"` qua Vercel lúc 12:09:34–12:09:47
+(#1 kèm header giả `X-Forwarded-For: 9.9.9.9`), user dán log Render.
+
+- 3 dòng log user dán có `out=17, 17, 10` → khớp request **#4, #5, #6** (curl thấy out 10,10,10,17,17,10). #4 có
+  `hits=0` → #1–#3 (trong cùng 10s) **không** được đếm vào IP `32.199.183.79` → _suy luận, chưa thấy log #1–#3_: IP đi
+  ra của Vercel **đổi giữa các request** → mỗi IP một bộ đếm → 6 lần vẫn lọt. Tức là rate limit sau Vercel vừa sai
+  (không theo user) vừa gần như vô tác dụng.
+- `xff` có 3 chặng: `32.199.183.79` (Vercel, AWS) → `172.71.x` / `104.22.x` (whois: **Cloudflare**, lớp trước Render) →
+  `10.x` (nội bộ Render). Backend lấy chặng **đầu tiên**.
+- Vì sao lấy chặng đầu (đọc code uvicorn 0.54.0): `fastapi run` bật `proxy_headers=True`, `forwarded_allow_ips=None`
+  (`fastapi_cli/cli.py:356-367`) → uvicorn đọc env `FORWARDED_ALLOW_IPS`, mặc định `127.0.0.1,::1`
+  (`uvicorn/config.py:363`). Mình **không** đặt env này. Với `'*'` uvicorn lấy luôn phần tử đầu của XFF
+  (`proxy_headers.py:176-177`); không thì đi từ phải sang trái, lấy IP đầu tiên không được tin. Ra phần tử đầu → _giả
+  thuyết_: Render tự đặt `FORWARDED_ALLOW_IPS` (có thể `*`) — chưa kiểm được env trên Render.
 
 Sau khi sửa:
 
 | Thử                                     | Kết quả |
 | --------------------------------------- | ------- |
-| 2 máy → 2 bộ đếm riêng                  |         |
-| `curl` thẳng Render, IP giả, không key  |         |
-| pytest "2 IP không chung lượt"          |         |
+| Laptop 7 lần qua Vercel (sau sửa, `327eca6`) | ✅ 13:16:38–13:16:51: #1–#5 `200`, #6 + #7 `429` `{"error":"Rate limit exceeded"}` + `Retry-After: 60` (qua được proxy Next). Trước sửa: 6 lần đều `200` |
+| 2 máy → 2 bộ đếm riêng                  | ⏭️ Bỏ qua (user, 2026-10-26). Chưa chứng minh chặt: `429` ở lần 6 cũng có thể ra với code cũ nếu IP Vercel tình cờ không đổi |
+| `curl` thẳng Render, IP giả, không key  | ✅ `X-Client-IP: 9.9.9.9`, không `X-API-Key` → `401` `{"detail":"Missing API Key"}` |
+| pytest "2 IP không chung lượt"          | ✅ `test_rate_limit_counts_per_client_ip` (1.1.1.1: 5×200 rồi 429; 2.2.2.2 vẫn 200) + `test_client_ip_header_without_key_is_401` (IP giả không key → 401, không vào `_hits`). pytest 12/12, ruff / format / pyright sạch |
+
+Sửa (Claude viết theo yêu cầu, user duyệt plan, 2026-10-26):
+
+- `route.ts`: lấy IP đầu tiên trong `x-forwarded-for` → gửi FastAPI header riêng **`X-Client-IP`** (không có thì không
+  gửi). Không chuyển nguyên `X-Forwarded-For`: sẽ phụ thuộc cách Render / uvicorn xử lý XFF (chưa rõ env trên Render).
+- `rate_limit.py`: hàm `client_ip()` — `X-Client-IP` đúng dạng IP (`ipaddress.ip_address`, chuẩn hoá) → đếm theo nó;
+  thiếu / sai dạng → về `req.client.host` như cũ. Bỏ `print` tạm.
 
 - Vì sao tin được header IP từ Next mà không tin `X-Forwarded-For` từ trình duyệt:
-- `--forwarded-allow-ips` để làm gì, vì sao `'*'` nguy hiểm:
+  - Phía Next: Vercel **ghi đè** `x-forwarded-for` bằng IP client, không chuyển giá trị client tự gửi
+    ([Request headers](https://vercel.com/docs/headers/request-headers)). Tự host Next thì **không** an toàn: Next chỉ
+    điền khi thiếu (`??=`, `next/dist/server/base-server.js:567`) → client tự gửi là giả được.
+  - Phía FastAPI: `dependencies=[Depends(verify_api_key), Depends(rate_limit)]` (`main.py:158`) → key sai / thiếu là
+    `401` trước khi đếm → chỉ ai có `APP_API_KEY` (= Next server) mới đặt được `X-Client-IP` có tác dụng.
+  - Thiếu header → đếm theo IP kết nối (local, test).
+- `--forwarded-allow-ips` để làm gì, vì sao `'*'` nguy hiểm: danh sách IP proxy được tin để uvicorn đọc
+  `X-Forwarded-For` làm IP client (mặc định `127.0.0.1,::1`, `uvicorn/config.py:363`). Với `'*'` uvicorn lấy **phần tử
+  đầu** XFF (`proxy_headers.py:176-177`) — phần tử này do **người gửi đầu tiên** tự ghi → ai gọi thẳng cũng tự đặt IP
+  được → né rate limit, ghi log sai IP. Không `'*'`: đi từ phải sang trái, dừng ở IP đầu tiên không phải proxy tin cậy.
 
 ## Bài A5 — README + GIF
 
-- [ ] `projects/p1-smart-copilot/README.md` · [ ] GIF trong `docs/` · [ ] dọn `web/README.md`, `backend/README.md`
+- [x] `projects/p1-smart-copilot/README.md` (bản nháp tiếng Anh, Claude viết theo yêu cầu 2026-10-26, số liệu lấy từ
+  notes Buổi 9–12; chỗ GIF đang comment lại) · ⏭️ GIF trong `docs/` · ⏭️ dọn `web/README.md`, `backend/README.md` (bỏ, user quyết định)
+- [x] Trước khi quay GIF — bỏ **Markdown thô** (nợ Buổi 11). Chọn cách A (user): thêm vào `instructions` (`main.py`)
+  "chỉ văn bản thường, không Markdown; liệt kê mỗi ý 1 dòng bắt đầu '- '". Cách B (render bằng `react-markdown`) không
+  làm: thêm dependency. Kiểm local (backend thật + key local): "Thời tiết ở Hà Nội và HCM hôm nay" và "Top 3 sản phẩm
+  bán chạy nhất?" → 0 dấu `*` / `#`, list bằng `- `. Đánh đổi: prompt không bảo đảm 100%, model vẫn có thể lỡ dùng.
 
 ## Phần B — Rebuild test
 

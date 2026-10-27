@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from openai.types.responses import ResponseFunctionToolCall
 
+from app import rate_limit
 from app.llm import MODEL, PRICES, cost_usd, get_openai_client
 from app.main import app
 
@@ -113,11 +114,14 @@ def tool_step(fc: ResponseFunctionToolCall, input_tokens: int, output_tokens: in
   ]
 
 
-def post_chat(fake: FakeOpenAI, message: str = "hi") -> Any:
+def post_chat(fake: FakeOpenAI, message: str = "hi", client_ip: str | None = None) -> Any:
   api_key = os.getenv("APP_API_KEY")
   assert api_key is not None, "APP_API_KEY chưa có trong .env"
   app.dependency_overrides[get_openai_client] = lambda: fake
-  return client.post("/chat/stream", json={"message": message}, headers={"X-API-Key": api_key})
+  headers = {"X-API-Key": api_key}
+  if client_ip is not None:
+    headers["X-Client-IP"] = client_ip  # giống route.ts gửi (Buổi 12 A4)
+  return client.post("/chat/stream", json={"message": message}, headers=headers)
 
 
 def parse_sse(body: str) -> list[tuple[str, dict[str, Any]]]:
@@ -266,3 +270,21 @@ def test_rate_limit_6th_is_429() -> None:
   assert blocked.status_code == 429
   assert "retry-after" in blocked.headers
   assert len(fake.responses.calls) == 5  # request bị 429 không tới OpenAI
+
+
+# Buổi 12 A4 (Claude viết theo yêu cầu, 2026-10-26): TestClient luôn là IP "testclient" — giống mọi
+# user sau Vercel cùng 1 IP kết nối → X-Client-IP phải tách bộ đếm theo user.
+def test_rate_limit_counts_per_client_ip() -> None:
+  fake = FakeOpenAI([[delta("ok"), completed(1, 1, [])]])
+  codes = [post_chat(fake, client_ip="1.1.1.1").status_code for _ in range(6)]
+
+  assert codes == [200, 200, 200, 200, 200, 429]
+  assert post_chat(fake, client_ip="2.2.2.2").status_code == 200  # IP khác: bộ đếm riêng
+
+
+def test_client_ip_header_without_key_is_401() -> None:
+  # header IP chỉ có tác dụng SAU khi qua key → không key thì 401, IP giả không vào bộ đếm
+  response = client.post("/chat/stream", json={"message": "hi"}, headers={"X-Client-IP": "9.9.9.9"})
+
+  assert response.status_code == 401
+  assert "9.9.9.9" not in rate_limit._hits

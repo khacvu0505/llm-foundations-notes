@@ -63,6 +63,9 @@ async def chat_events(openai_client: AsyncOpenAI, message: str) -> AsyncIterator
         input=input_list,
         instructions=(
           "Trả lời ngắn gọn bằng tiếng Việt. "
+          # Buổi 12 A5: widget in chữ thô (whitespace-pre-wrap) → Markdown hiện nguyên dấu ** / *
+          "Chỉ dùng văn bản thường, không dùng Markdown (không **, *, #, bảng); "
+          "liệt kê thì mỗi ý một dòng, bắt đầu bằng '- '. "
           "Cần số liệu đơn hàng, doanh thu hay thời tiết thì gọi tool, không tự bịa số."
         ),
         stream=True,

@@ -1,6 +1,6 @@
 // Claude viết theo yêu cầu, 2026-10-20 — Bài 5: route giả trả kịch bản SSE viết tay → kiểm UI không tốn tiền OpenAI,
 // chủ động tạo được case lỗi (giống OpenAI giả ở test backend Buổi 10).
-// POST /api/chat-mock?scenario=ok | tool-error | mid-error | unknown-tool | rate-limit
+// POST /api/chat-mock?scenario=ok | cold-start | tool-error | mid-error | unknown-tool | rate-limit
 
 import type { ChatEvent } from "@/lib/types"
 
@@ -20,27 +20,32 @@ const DONE: Step = {
 }
 
 // data khớp tay với backend/app/tools.py (giống component nhận ở Bài 3)
-const SCENARIOS: Record<string, Step[]> = {
-  // đường vui: trạng thái tool → card → chữ chảy → usage
-  ok: [
-    { event: "tool_call", data: { call_id: "mock_1", name: "get_weather", arguments: { city: "Đà Nẵng" } }, wait: 800 },
-    {
-      event: "tool_result",
-      data: {
-        call_id: "mock_1",
-        name: "get_weather",
-        ok: true,
-        data: { city: "Đà Nẵng", temperature_c: 29.5, condition: "Ít mây", observed_at: "2026-10-20 12:00" },
-      },
-      wait: 1500,
+// đường vui: trạng thái tool → card → chữ chảy → usage. Tách const để "cold-start" dùng lại
+const OK: Step[] = [
+  { event: "tool_call", data: { call_id: "mock_1", name: "get_weather", arguments: { city: "Đà Nẵng" } }, wait: 800 },
+  {
+    event: "tool_result",
+    data: {
+      call_id: "mock_1",
+      name: "get_weather",
+      ok: true,
+      data: { city: "Đà Nẵng", temperature_c: 29.5, condition: "Ít mây", observed_at: "2026-10-20 12:00" },
     },
-    ...words(
-      "Đà Nẵng hiện ít mây, khoảng 29,5°C, chưa thấy dấu hiệu mưa nên vẫn giao đơn bình thường được. " +
-        "Đây là câu trả lời giả từ route chat-mock: không gọi FastAPI, không gọi OpenAI, không tốn tiền. " +
-        "Câu đủ dài để kịp bấm Dừng giữa chừng và xem chữ đã có còn giữ lại không.",
-    ),
-    DONE,
-  ],
+    wait: 1500,
+  },
+  ...words(
+    "Đà Nẵng hiện ít mây, khoảng 29,5°C, chưa thấy dấu hiệu mưa nên vẫn giao đơn bình thường được. " +
+      "Đây là câu trả lời giả từ route chat-mock: không gọi FastAPI, không gọi OpenAI, không tốn tiền. " +
+      "Câu đủ dài để kịp bấm Dừng giữa chừng và xem chữ đã có còn giữ lại không.",
+  ),
+  DONE,
+]
+
+const SCENARIOS: Record<string, Step[]> = {
+  ok: OK,
+  // Buổi 12 A3 (Claude viết theo yêu cầu, 2026-10-26): giả Render đang ngủ → event đầu tới sau 8s
+  // → 0–5s "Đang trả lời…", 5s hiện thêm "Máy chủ có thể đang khởi động", 8s ra card
+  "cold-start": [{ ...OK[0], wait: 8000 }, ...OK.slice(1)],
   // tool lỗi (giống execute_call trả ok:false) → cảnh báo nhỏ, chữ vẫn chảy, vẫn kết thúc bằng done
   "tool-error": [
     { event: "tool_call", data: { call_id: "mock_1", name: "query_orders", arguments: { customer: "An" } }, wait: 800 },
