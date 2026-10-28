@@ -12,11 +12,40 @@ Link demo:
 - Frontend (Vercel): https://llm-foundations-notes.vercel.app
 - Backend (Render): https://llm-foundations-notes.onrender.com
 
-## Handoff — dừng ở đây (cập nhật 2026-10-26, 13:35)
+## Handoff — dừng ở đây (cập nhật 2026-10-27)
 
 _(Claude ghi để mở session mới. Đọc mục này trước, chi tiết từng bài ở dưới.)_
 
-**Đang dừng ở**: A5 — README đã viết + push (`d4ad284`), **chưa có GIF**.
+**Đang dừng ở**: Phần B bước 2 (1 tool + vòng lặp tool) — tool + `get_weather` xong (đã sửa + test), **chưa có
+vòng lặp**. Thư mục rebuild thật là `projects/p1-smart-copilot-v2/backend/` (không phải `~/rebuild-p1/` như bảng Phần B).
+
+**Đã xong hôm 27/10** (`app/main.py`, chưa commit):
+
+- Bước 1 + 3 (một phần) đã commit trước đó: `/health`, `/chat` stream, SSE `delta` / `done` / `error` (`19f4d1c`).
+- Tool `get_weather_tool` đúng format **Responses API** (phẳng: `type`/`name`/`description`/`strict`/`parameters`,
+  không bọc `"function"` như Chat Completions); `strict: True` + `additionalProperties: False`; `"enum": list(CITIES.keys())`
+  (danh sách thành phố chỉ ở `CITIES`); `tools=TOOLS` đã truyền vào `responses.create`.
+- `async def get_weather(city: str) -> WeatherResponse | WeatherError`: city lạ → trả `WeatherError` (không raise);
+  gọi Open-Meteo bằng `httpx2` (đã `uv add httpx2`); `httpx2.HTTPError` → log + trả `WeatherError`; map `weather_code`
+  → chữ qua `WMO_CODES`. Claude chạy thử 27/10 bằng `.venv` của v2: Hà Nội → dict thời tiết; "Huế" →
+  `{'error': 'City Huế not found'}`; URL sai (404) → dict `error`, không crash.
+
+**Việc tiếp theo (theo thứ tự)**:
+
+1. Vòng lặp tool trong `stream_answer`: bắt item `function_call` trong stream (lấy `name`, `arguments` = JSON string,
+   `call_id`) → chạy `get_weather` → gọi `responses.create` lần 2 với `previous_response_id` + input
+   `function_call_output` (cùng `call_id`, `output` = `json.dumps(result)`) → stream text → `done`. Dùng `while` có giới
+   hạn số vòng (vd 3). Mẹo: in mọi `event.type` một lần để xem event nào tới.
+2. Bước 3 còn lại: SSE `tool_result` ngay sau khi chạy tool. Test: `curl -N` `/chat` với "Thời tiết Đà Nẵng?".
+3. Bước 4–6 (Next.js, `tool_result` → component, key chỉ ở backend) + điền cột "Mốc thời gian / Vướng gì" bảng Phần B.
+4. 6 câu Exit criteria cuối file (tự viết, không nhìn notes).
+
+**Tuỳ chọn (không chặn)** cho `get_weather`:
+
+- Lỗi HTTP đang trả `str(e)` (lộ URL + chi tiết) cho model → log giữ `str(e)`, model nhận câu ngắn cố định.
+- Câu "not found" nên liệt kê thành phố hỗ trợ để model báo lại user.
+- JSON Open-Meteo thiếu `"current"` vẫn `KeyError` (hiếm) → để vòng lặp tool bắt.
+- `.venv` v2 chưa có `pyright` / `ruff` → muốn kiểm type thì tự `uv add --dev pyright ruff`.
 
 **Đã xong hôm 26/10** (chi tiết + số đo ở từng mục bên dưới):
 
@@ -25,11 +54,7 @@ _(Claude ghi để mở session mới. Đọc mục này trước, chi tiết t�
 - A4: rate limit theo IP thật — `route.ts` gửi `X-Client-IP`, `rate_limit.py` `client_ip()`, +2 pytest (12/12).
   Prod: laptop 6 lần → lần 6 `429`.
 - A5: câu trả lời chữ thường (prompt cấm Markdown, `main.py`); `projects/p1-smart-copilot/README.md` bản tiếng Anh.
-
-**Việc tiếp theo (theo thứ tự)**:
-
-1. Phần A xong. GIF + dọn 2 README cũ: **bỏ** (user quyết định 2026-10-26 — ưu tiên kiến thức).
-2. Phần B rebuild test (ngày khác) + 6 câu Exit criteria cuối file (tự viết, không nhìn notes).
+- Phần A xong. GIF + dọn 2 README cũ: **bỏ** (user quyết định 2026-10-26 — ưu tiên kiến thức).
 
 **Còn treo**:
 
