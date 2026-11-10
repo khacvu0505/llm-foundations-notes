@@ -32,7 +32,10 @@ commit cuối `e30cff5`). Lý do: v2 chỉ là bản dựng lại phần lõi c�
 **Việc tiếp theo**:
 
 1. (Tuỳ user) Rebuild test sạch sau: thư mục mới, không AI, không nhìn code cũ, ≤ 3h — mới tính là qua cổng Phase 01.
-2. 6 câu Exit criteria cuối file (tự viết, không nhìn notes).
+2. ~~6 câu Exit criteria cuối file~~ → **xong 2026-11-10**: cả 6 câu đã có câu mẫu (user tự trả lời 1–5b trước,
+   Claude review + viết câu mẫu; 5c + 6 Claude viết câu mẫu theo yêu cầu). Còn lại: tự **nói to** lại từng câu theo
+   từ khoá, không nhìn notes.
+3. A1 Q6: đặt hard limit chi tiêu OpenAI (dashboard) trước khi share link demo rộng.
 
 **Đã xong hôm 26/10** (chi tiết + số đo ở từng mục bên dưới):
 
@@ -377,15 +380,192 @@ Kết quả: **pass / chưa pass** (…/6) · Danh sách ôn:
 
 ### 1. Vì sao SSE thay vì WebSocket?
 
+Câu mẫu (2026-11-10, sau khi Claude review bản tự viết):
+
+> Each question is one request with one streamed reply, so data only flows server → client. SSE runs on plain HTTP,
+> so it works with my FastAPI `StreamingResponse`, the Next proxy and Vercel, with no extra setup for auth or rate
+> limits. It's not faster than WebSocket, it's simpler. I'd switch to WebSocket if I needed true two-way realtime,
+> like voice or multi-user editing.
+
+Lưu ý: đừng nói "SSE nhanh hơn" (sai, sau handshake WebSocket không chậm hơn) → lợi thế là **đơn giản**. Luôn kèm
+"khi nào chọn WebSocket".
+
+Câu hỏi thêm: nút Dừng gửi tín hiệu client → server, vậy sao vẫn không cần WebSocket?
+
+> Stop is a single event, not a two-way stream. The browser calls `abort()`, which closes the HTTP connection. My
+> Next proxy passes that on through `request.signal`, and FastAPI sees the disconnect as `CancelledError` and stops
+> the OpenAI stream. Closing the connection is the signal, so I don't need WebSocket. If I needed to send many
+> messages mid-stream, like voice or interrupting with new input, I'd use WebSocket.
+
+Chuỗi huỷ trong v1: `ChatWidget.tsx` `abort()` → `route.ts` `signal: request.signal` (Vercel cần
+`supportsCancellation: true` trong `web/vercel.json`) → `backend/app/main.py` bắt `asyncio.CancelledError`, ghi
+`cancelled`. Lưu ý: lại đừng nói "nhanh hơn" → nói "không cần kênh riêng, đóng kết nối là tín hiệu".
+
 ### 2. Tool call fail giữa stream thì xử lý sao?
+
+Câu mẫu (2026-11-10, sau khi Claude review — bản tự đoán "không hiện gì" là **sai**):
+
+> A failed tool never crashes the stream. I catch the error inside the tool runner and return `{ok: false, error}` as
+> the tool result. The client gets a `tool_result` event and shows a warning card, and the model reads the same error
+> and explains it to the user in plain words. I log the real error on the server and send only a short message to the
+> model and user. If the LLM call itself fails, I send an SSE `error` event, and the text already shown stays on
+> screen.
+
+Ý chính: **lỗi tool là dữ liệu cho model**, không phải exception.
+
+| Trường hợp | Server gửi | UI hiện | Stream |
+| --- | --- | --- | --- |
+| Tool lỗi (API thời tiết sập, tham số sai) | `tool_result` `ok: false`, "Tool … lỗi, thử lại sau" (`backend/app/tools.py:273`) | thẻ ⚠️ (`ToolView.tsx:52`) + model tự giải thích | **chạy tiếp** → `done` |
+| OpenAI lỗi | SSE `error` "Có lỗi khi tạo câu trả lời, thử lại sau" (`main.py`, `except openai.APIError`) | dòng đỏ dưới chữ đã có (`ChatWidget.tsx:152`) | **dừng** |
+
+Câu báo ngắn là cố ý: lỗi thật (stack trace, URL) chỉ ghi log server.
 
 ### 3. Structured output fail thì retry thế nào?
 
+Câu mẫu (2026-11-10, sau khi Claude review — bản tự viết chỉ có "dùng Pydantic chặn lỗi từ đầu"):
+
+> First I prevent shape errors with strict structured output: I pass a Pydantic model to `responses.parse`, so the
+> JSON always matches the schema. But a schema can't hold every business rule, so Pydantic validators check things
+> like phone format. If validation fails, I retry by sending the model its previous answer plus the exact validation
+> error, and ask it to fix it. I cap it at 2 retries, then fall back to `None` or a null field with a note, and log
+> the failure.
+
+Phân biệt: **chặn** (strict schema → đúng khung: field, kiểu) ≠ **phát hiện** (validator Pydantic → luật nghiệp vụ,
+vd SĐT 10 số). Retry phải gửi kèm câu trả lời cũ + lỗi cụ thể, gửi lại y prompt cũ thì thường sai y cũ. Code đã làm:
+`weeks/week01/session05/exercises.py` Bài 4 (`extract_with_retry`, `format_errors`).
+
 ### 4. Temperature ảnh hưởng gì?
+
+Câu mẫu (2026-11-10, sau khi Claude review — bản tự viết: "thấp ổn định, cao sáng tạo; tra cứu để thấp, sáng tạo để
+cao", đúng nhưng thiếu cơ chế):
+
+> Temperature reshapes the probability table for the next token. Low temperature makes it sharp, so the top token
+> almost always wins and output is stable. High makes it flat, so rarer tokens get picked: more varied, but also more
+> random and less predictable in length. I use low for extraction, JSON and factual lookups, and higher for
+> brainstorming. Temperature 0 is close to deterministic but not guaranteed. Also, some reasoning models like the one
+> I used don't accept temperature at all.
+
+Nối với Buổi 3 (`weeks/week01/session03/notes.md`): cơ chế bảng xác suất "nhọn" / "phẳng" (dòng 39–40);
+`temperature=1` ra 3 tên khác nhau, độ dài 13/10/8 token → chi phí khó đoán (dòng 32); `gpt-6-luna` báo 400
+"Unsupported parameter: 'temperature'" vì là model suy luận (dòng 25).
+
+**Temperature 0 có luôn giống nhau không?** Không đảm bảo, chỉ "mostly":
+
+- OpenAI cookbook: "Determinism is not guaranteed"; cùng `seed` + tham số + `system_fingerprint` thì "outputs will
+  mostly be identical" — https://developers.openai.com/cookbook/examples/reproducible_outputs_with_the_seed_parameter
+- Azure OpenAI: seed chỉ là "best-effort" — https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/reproducible-output
+- Lý do: temperature 0 chỉ cố định **bước chọn** (luôn lấy token cao nhất), nhưng **bảng xác suất** vẫn lệch nhẹ giữa
+  các lần (số thực trên GPU, batch chung request người khác — nguồn forum/blog, không phải docs chính thức); 2 token
+  gần bằng nhau thì lệch nhẹ cũng đổi lựa chọn → phần sau khác hết. OpenAI đổi backend → `system_fingerprint` đổi.
+- Buổi 3 chạy 3 lần giống hệt = khớp "mostly", chưa chứng minh "luôn".
+- Hệ quả: test output LLM bằng cấu trúc / ý nghĩa, đừng so chuỗi y hệt.
 
 ### 5. Transformer / tokens / context window bằng lời của mình
 
+#### 5a. Token
+
+Câu mẫu (2026-11-10, sau khi Claude review — bản tự đoán "token là 1 từ hoặc cụm từ" là **chưa đúng**: token thường
+nhỏ hơn hoặc bằng 1 từ, không phải cụm từ):
+
+> A token is a small piece of text: a whole word, part of a word, or punctuation. The model never sees words, only
+> token IDs, and it reads and generates one token at a time. So tokens decide cost, speed and how much fits in the
+> context window. For example, 'Thời tiết Đà Nẵng hôm nay có mưa' is 14 tokens, but the same sentence in English is
+> 9, so Vietnamese costs more.
+
+Bản tiếng Việt: Token là một mảnh văn bản nhỏ: cả từ, một phần của từ, hoặc dấu câu. Model không đọc chữ mà đọc ID
+token, sinh ra từng token một → token quyết định chi phí, tốc độ, lượng nội dung vừa context window.
+
+Số đo thật (Claude chạy `tiktoken`, encoding `o200k_base` của GPT-4o — **chưa kiểm** tokenizer của `gpt-6-luna`,
+số có thể lệch nhưng xu hướng giống):
+
+| Văn bản | Token | Cắt thành |
+| --- | --- | --- |
+| `The weather in Da Nang is rainy today.` | 9 | `The` · ` weather` · ` in` · ` Da` · ` Nang` · … · `.` |
+| `Thời tiết Đà Nẵng hôm nay có mưa.` | 14 | `Th` · `ời` · ` tiết` · ` Đ` · `à` · ` N` · `ẵ` · `ng` · … · ` m` · `ưa` · `.` |
+| `unbelievable` | 3 | `un` · `bel` · `ievable` |
+
+Tiếng Việt bị cắt nhiều hơn (nhất là chữ có dấu) vì tokenizer học chủ yếu từ văn bản tiếng Anh.
+
+**Vì sao tính theo token, không theo từ?**
+
+1. Token = công việc thật: model tốn 1 phần tính toán cho mỗi token (`unbelievable` 1 từ = 3 token) → tính tiền theo
+   token mới đúng công sức.
+2. "Từ" không định nghĩa rõ: tiếng Trung / Nhật không có dấu cách; `Đà Nẵng` 1 hay 2 từ? Code, URL, số, emoji? →
+   tokenizer luôn cho 1 con số chính xác.
+3. Từ vô hạn (từ mới, lỗi gõ, tên riêng), token là bộ cố định ghép được mọi văn bản (`Nẵng` → ` N` + `ẵ` + `ng`) →
+   đây là lý do model dùng token ngay từ đầu, tính tiền chỉ đi theo.
+
+Bản 1 câu: "Because the model itself works in tokens: compute, cost and the context limit are all per token. 'Word'
+isn't even well-defined across languages, code or emoji, while a fixed token vocabulary can represent any text."
+
+#### 5b. Context window
+
+Câu mẫu (2026-11-10, sau khi Claude review — bản tự viết: "ngữ cảnh hội thoại AI hiểu; dài quá thì AI lược bỏ phần
+đầu; càng dài càng tốn tiền vì cộng dồn" → ý chi phí đúng, định nghĩa mơ hồ, ý "AI tự lược bỏ" chưa đúng):
+
+> The context window is the maximum number of tokens the model can handle in one call: instructions, chat history,
+> tool results and its own answer all count. The model has no memory, so the history is resent every turn. That's
+> why long chats cost more and get slower. When you hit the limit, the API returns an error by default, so the app
+> has to manage it: keep the last N messages, summarize old ones, or enable automatic truncation, accepting it may
+> forget early details.
+
+Sửa ý:
+
+- Định nghĩa theo **token**, tính cả input + output (instructions, lịch sử, tool schema, tool result, câu trả lời).
+- Model **không có trí nhớ**: "nhớ" vì lịch sử được gửi lại mỗi lượt (app gửi, hoặc server OpenAI khi dùng
+  `previous_response_id`).
+- Chạm giới hạn: **mặc định báo lỗi 400**, không tự cắt. Responses API `truncation`: `disabled` (mặc định) → 400;
+  `auto` → bỏ item "from the beginning of the conversation" (docstring SDK `openai/resources/responses/responses.py`
+  dòng 405–411). → App tự quyết: giữ N tin gần nhất / tóm tắt / bật `auto` — đều có thể mất thông tin đầu.
+- Chi phí: mỗi lượt gửi lại toàn bộ lịch sử → token input phình dần, trả tiền lại mỗi lần. Thêm: chậm hơn vì
+  attention so từng cặp token → gấp đôi token ≈ gấp 4 tính toán (`weeks/week01/session02/notes.md:86`).
+
+#### 5c. Transformer
+
+Câu mẫu (2026-11-10 — user chưa có hướng trả lời, Claude đưa khung 4 bước từ notes Buổi 2 rồi viết câu mẫu):
+
+> First, the text is split into tokens, and each token becomes a vector: a long list of numbers that captures its
+> meaning. Then attention lets each token look at the tokens before it and update its meaning from context. For
+> example, 'bàn' means something different in 'bàn gỗ' and 'bàn kế hoạch'. After attention, an MLP block processes
+> each vector using what the model learned in its weights, and these two steps repeat across many layers. At the end,
+> the model outputs a probability for every possible next token, picks one, adds it to the text, and repeats. That's
+> how a whole answer is written, one token at a time. And because it picks what sounds most likely, not what's true,
+> it can hallucinate confidently.
+
+Bản tiếng Việt: Văn bản cắt thành token, mỗi token đổi thành vector (dãy số thể hiện nghĩa). Attention cho mỗi token
+nhìn các token phía trước để cập nhật nghĩa theo ngữ cảnh ("bàn gỗ" ≠ "bàn kế hoạch"). MLP xử lý từng vector bằng
+kiến thức trong trọng số; attention + MLP lặp qua nhiều lớp. Cuối cùng ra xác suất cho mọi token tiếp theo, chọn
+một, nối vào, lặp lại → viết từng token một. Chọn token nghe hợp lý nhất chứ không phải đúng nhất → bịa tự tin.
+
+Nhớ 4 từ khoá (đừng học thuộc): **token → vector** · **attention** · **MLP + nhiều lớp** · **xác suất token tiếp
+theo**. Hình dung: cả nhóm đọc câu — mỗi từ có thẻ nghĩa, nhìn hàng xóm, tra kiến thức, rồi bỏ phiếu chọn từ tiếp.
+Nguồn: `weeks/week01/session02/notes.md` (bảng thuật ngữ chương 5–7 + mục "Viết lại bằng lời của mình").
+
 ### 6. (Mới) Deploy app LLM có streaming qua nhiều lớp proxy cần chú ý gì? Rate limit sau proxy lấy IP thế nào?
+
+Câu mẫu (2026-11-10 — Claude viết từ số đo thật Bài A2–A4 ở trên):
+
+> Two things. **Streaming:** every hop must pass chunks through instead of buffering. I checked with `curl -N`
+> timing through both Render and Vercel, and deltas arrived spread out, not in one block. Cancellation must reach the
+> backend too: on Vercel I had to opt in with `supportsCancellation`, otherwise Stop never reached FastAPI and we kept
+> paying OpenAI. And watch the time limits: Vercel's function limit is 300 seconds including the stream, and Render's
+> free tier has a 50–75 second cold start, so I show a 'server is starting' hint.
+>
+> **Real IP:** behind proxies, FastAPI only sees the proxy's IP. In my case it was Vercel's changing AWS IP, so the
+> rate limit was useless. I fixed it in the Next route: Vercel overwrites `x-forwarded-for` with the real client IP,
+> so I read it there and send it as my own `X-Client-IP` header. FastAPI trusts that header only because the API-key
+> check runs before the rate limit, so only my Next server can set it. I never trust an `X-Forwarded-For` sent by the
+> browser, and I never set `--forwarded-allow-ips='*'`, because anyone could fake their IP.
+
+Từ khoá:
+
+- **Streaming**: không gom cục (đo `curl -N`, A2 dòng Render + A3 dòng Vercel) · huỷ tới tận backend
+  (`supportsCancellation`, A3) · giới hạn thời gian (Vercel 300s tính cả stream; Render cold start 50–75s → dòng
+  "Máy chủ có thể đang khởi động") · log trên Render cần `PYTHONUNBUFFERED=1`.
+- **IP thật**: proxy che IP (trước sửa: backend thấy IP AWS của Vercel, đổi giữa các request → 6 lần không `429`) ·
+  đọc header tin cậy ở lớp ngoài (Vercel ghi đè `x-forwarded-for`) → `X-Client-IP` · `verify_api_key` chạy **trước**
+  `rate_limit` → chỉ Next server đặt được · không tin XFF từ trình duyệt, không `--forwarded-allow-ips='*'`.
+  Chi tiết: Bài A4 ở trên.
 
 ## Nợ còn lại (không chặn Buổi 12)
 
