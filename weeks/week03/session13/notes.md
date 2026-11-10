@@ -2,16 +2,21 @@
 
 Đề bài: `exercises.md` cùng thư mục.
 
-- [ ] Setup · [ ] Bài 1 OpenAI embedding · [ ] Bài 2 cosine · [ ] Bài 3 Việt/Anh, OpenAI vs đa ngữ ·
-  [ ] Bài 4 dữ liệu Bộ luật Lao động
+- [x] Setup · [x] Bài 1 OpenAI embedding · [x] Bài 2 cosine · [x] Bài 3 Việt/Anh, OpenAI vs đa ngữ ·
+  [x] Bài 4 dữ liệu Bộ luật Lao động · [x] 3 câu phỏng vấn (câu mẫu — còn tập nói to)
 
 ## Handoff — dừng ở đây (cập nhật 2026-11-10)
 
 _(Claude ghi để mở session mới. Đọc mục này trước.)_
 
-**Bắt đầu Phase 02.** Domain đã chọn: **Bộ luật Lao động VN** (user quyết định 2026-11-10). Chưa làm bài nào.
+**Buổi 13 xong** (2026-11-10). Domain: **Bộ luật Lao động VN**, dữ liệu **18/VBHN-VPQH** ở
+`projects/p2-labor-law-rag/data/raw/` (DOCX chính + PDF). ~96k token (cl100k) → ~213 chunk → embed ≈ $0.002. Tạm
+nghiêng OpenAI `-3-small` (Buổi 6 chốt). Setup, 2 câu Bài 4, 3 câu phỏng vấn: **câu mẫu Claude viết theo yêu cầu**.
 
-**Việc tiếp theo**: Setup → Bài 1.
+**Việc tiếp theo**: (1) user commit (Buổi 13 + `pyproject.toml`/`uv.lock` + `projects/p2-labor-law-rag`); (2) tập
+nói to 3 câu phỏng vấn; (3) **Buổi 14 — pgvector** (Docker Postgres + pgvector, bảng vector, toán tử `<=>`; kiểm
+giới hạn số chiều của index — đã kiểm: `vector` tối đa 2,000 chiều, xem `weeks/week03/session14/notes.md`); (4) viết `data/raw/internal/noi-quy-abc.md` trước
+Buổi 3; (5) sau 21/11/2026 kiểm Công báo xem có bản hợp nhất mới.
 
 **Cách làm việc** (giữ từ Phase 01): đi từng câu một; Claude gợi ý + review + chạy test, user tự viết code bài tập
 (trừ khi user nhờ viết); user tự làm git commit/push + thao tác dashboard; notes ghi tiếng Việt, mỗi câu có bảng +
@@ -34,10 +39,13 @@ _(Claude ghi, 2026-11-10.)_
 
 | Câu hỏi                                 | Trả lời (nguồn) |
 | --------------------------------------- | --------------- |
-| Embedding là gì (1 câu của mình)        |                 |
-| Model nào, số chiều mặc định            |                 |
-| `dimensions` dùng để làm gì, đánh đổi gì |                 |
-| Giá / 1M token                          |                 |
+| Embedding là gì (1 câu của mình)        | Biến 1 đoạn text thành 1 vector **độ dài cố định** (1536 số với `-3-small`), sao cho text **gần nghĩa → vector gần nhau** (cosine cao) → tìm kiếm theo nghĩa, không cần trùng chữ. API OpenAI chỉ nhận **text** (string hoặc mảng token), tối đa 8192 token/input (SDK `embedding_create_params.py:15-20`). User trả lời "vector hoá data: text, img…" → thiếu ý "gần nghĩa → gần nhau" |
+| Model nào, số chiều mặc định            | `-3-small` **1536** · `-3-large` **3072** · `ada-002` **1536** (cũ) — user trả lời đúng cả 3. MTEB 62.3% / 64.6% / 61.0%, max input 8192. Large chỉ +2.3 điểm nhưng giá ×6.5, lưu ×2 → mặc định small. MTEB là điểm chung, không nói gì về tiếng Việt (suy luận) |
+| `dimensions` dùng để làm gì, đánh đổi gì | Cắt bớt số **ở cuối** vector (vd. 1536 → 256) mà vẫn giữ nghĩa, vì model `-3` được train để phần quan trọng nằm ở đầu. **Được:** lưu/RAM ít hơn, search nhanh hơn, vừa giới hạn số chiều của vector DB. **Mất:** một ít độ chính xác (docs: `-3-large` cắt còn 256 vẫn hơn `ada-002` 1536 trên MTEB). Chỉ `text-embedding-3` trở lên (SDK `embedding_create_params.py:38-42`). Tự cắt bằng tay → **phải chuẩn hoá lại (L2)** vì \|v\| ≠ 1 |
+| Giá / 1M token                          | `-3-small` **$0.02** · `-3-large` $0.13 · `ada-002` $0.10 (chỉ input). Cả bộ luật ≈ $0.002 → chi phí embed **không đáng kể**, tiền thật nằm ở LLM sinh câu trả lời (https://developers.openai.com/api/docs/pricing, đọc 2026-11-10) |
+
+_(Nguồn chung: https://developers.openai.com/api/docs/guides/embeddings — bảng "Embedding models", mục "Reducing
+embedding dimensions", FAQ. Claude đọc 2026-11-10. Dòng 1, 3, 4: câu mẫu Claude viết theo yêu cầu.)_
 
 ## Bài 1 — OpenAI embedding
 
@@ -195,7 +203,7 @@ luật**. Câu hỏi `query:`, đoạn `passage:` cho e5.)_
 | Tổng token (`tiktoken`) | **95,759 token** với `cl100k_base` — đúng tokenizer của `text-embedding-3-small/large` (`tiktoken/model.py:47-48`). Cùng text: `o200k_base` (GPT-4o trở đi) = 52,509 → tokenizer cũ tốn gần **gấp đôi** với tiếng Việt. 191,485 ký tự, 41,814 từ → **2.29 token/từ** (cl100k). Đếm trên text trích nhanh từ DOCX (còn 1 đoạn rác XML, lệch không đáng kể). Claude đo 2026-11-10 |
 | Ước tính số chunk      | 500 token/chunk, overlap 50 (bước 450): **~213 chunk** (không overlap: 192). 1 chunk 500 token ≈ **218 từ** tiếng Việt — ngắn hơn cảm giác. _Ước tính thô_: Buổi 3 cắt theo Điều (220 Điều, nhiều Điều ngắn) thì số chunk sẽ khác, có thể nhiều hơn |
 | Ước tính chi phí embed | Giá (trang pricing, Claude đọc 2026-11-10, https://developers.openai.com/api/docs/pricing): `-3-small` **$0.02/1M**, `-3-large` $0.13/1M, `ada-002` $0.10/1M input token. Cả bộ có overlap (~106.5k token): small **≈ $0.002**, large ≈ $0.014. Embed lại 100 lần vẫn < $0.25 → chi phí embed **không phải** yếu tố chọn model; tiền thật nằm ở bước gọi LLM sinh câu trả lời |
-| Kế hoạch tài liệu `internal` |                      |
+| Kế hoạch tài liệu `internal` | Tự viết `data/raw/internal/noi-quy-abc.md` — "Nội quy Công ty ABC (nội bộ) — TÀI LIỆU GIẢ", 2–3 trang: lương theo bậc, thưởng, quy trình kỷ luật (cùng chủ đề luật → dễ bị lẫn khi retrieve = đúng thứ cần test). Cài **số lạ làm dấu rò rỉ** (vd. "thưởng 7,350,000đ", "mã KL-0429") → check chuỗi là bắt được. `allowed_groups=["internal"]` (Buổi 3 metadata, Buổi 8 leak test). Viết trước Buổi 3. (User duyệt 2026-11-10) |
 
 ⚠️ **Sắp có sửa đổi (theo báo chí, chưa xác nhận chính thức — Claude tìm 2026-11-10):** dự án Luật sửa đổi Bộ luật
 Lao động (cùng Luật Lưu trữ, Bình đẳng giới, Hoạt động chữ thập đỏ) Quốc hội thảo luận 9/11/2026, **dự kiến biểu
@@ -205,13 +213,88 @@ Hệ quả: (1) eval set Buổi 5 **tránh** câu về số ngày nghỉ lễ (�
 (2) sau 21/11 kiểm Công báo → khi có bản hợp nhất mới = ca test thật cho **vòng đời tài liệu** (Buổi 13–15:
 `doc_id`, `content_hash`, chỉ re-embed điều bị đổi).
 
-- Vì sao luật hợp với RAG:
-- Luật sửa đổi → Project #2 xử lý thế nào:
+_(Câu mẫu Claude viết theo yêu cầu, 2026-11-10.)_
+
+**1. Vì sao luật hợp với RAG?** (User: "RAG để tra cứu, trả lời dựa trên tài liệu, cần chính xác + trích nguồn" →
+đúng nhu cầu của RAG, nhưng chưa nối với đặc điểm của luật.)
+
+| Lý do | Vì sao giúp RAG |
+| --- | --- |
+| **Cấu trúc rõ** Chương → Điều → Khoản | Cắt chunk theo Điều, metadata giữ số Điều → trả lời **trích được nguồn** ("theo Điều 139") |
+| **Đáp án rõ**, có trong văn bản | Eval chấm đúng/sai dễ (Buổi 5), không "tuỳ trường hợp" |
+| **Hay bị sửa** (3 luật sửa 2025, dự kiến sửa tiếp 21/11/2026) | LLM chỉ nhớ bản cũ lúc train → RAG chỉ cần **thay tài liệu**, không train lại |
+| **Công khai** | Demo public được |
+
+**2. Luật sửa đổi → Project #2 làm gì?** (Tình huống: bản hợp nhất mới chỉ đổi Điều 112.)
+
+| Nhãn trên mỗi chunk | Là gì | Ví dụ |
+| --- | --- | --- |
+| `doc_id` | Tên **cố định**, không đổi qua phiên bản | `bllđ:dieu-112` |
+| `content_hash` | **Dấu vân tay** nội dung (SHA-256), sửa 1 chữ là đổi | `a3f9…` |
+
+Có bản mới → chunk lại → so hash theo `doc_id`: **giống → bỏ qua** (219 Điều) · **khác → embed lại + thay** (Điều
+112) · **không còn trong bản mới → xoá**. Lý do chính **không phải tiền** (embed lại cả bộ ~$0.002) mà là **chunk cũ
+còn trong DB** → search ra cả "11 ngày" lẫn "13 ngày" → LLM trả lời sai mà trông đúng. Đề xuất thêm `effective_from`
+(Điều 112 hiệu lực ngay, phần còn lại 01/3/2027 — theo báo chí; Notion không ghi, là đề xuất của Claude). Làm thật ở
+Buổi 13–15 (vòng đời tài liệu).
 
 ## Câu phỏng vấn cuối buổi
 
+_(Câu mẫu Claude viết theo yêu cầu, 2026-11-10. User chưa tự trả lời → **tập nói to** mỗi câu ~30–40 giây.)_
+
 ### 1. Embedding là gì? Khác gì token ID?
+
+Token ID thật (`tiktoken` `cl100k_base` — tokenizer của `-3-small`, từ điển 100,277 mục; Claude chạy 2026-11-10):
+
+| Text | Token IDs |
+| --- | --- |
+| "lương" | `[75, 86475]` (2 token: "l" + "ương") |
+| "tiền công" | `[10462, 70343, 63129]` |
+| "salary" | `[52710]` |
+
+> **Embedding** là 1 vector số thực **độ dài cố định** (vd. 1536 số) đại diện cho **nghĩa** của 1 đoạn text — gần
+> nghĩa thì vector gần nhau (cosine cao) → tìm kiếm theo nghĩa.
+>
+> **Token ID** chỉ là **số nguyên**, số thứ tự của 1 mảnh chữ trong từ điển tokenizer. **Không mang nghĩa**:
+> "lương" và "tiền công" gần nghĩa nhưng số chẳng liên quan.
+>
+> Nối nhau: trong model, mỗi token ID được **tra bảng** ra 1 vector (token embedding), rồi các lớp transformer trộn
+> ngữ cảnh. **Embedding API** trả **1 vector cho cả đoạn**, không phải từng token.
+
+Câu nhớ: **ID = số thứ tự, embedding = vị trí theo nghĩa.**
 
 ### 2. Vì sao dùng cosine similarity?
 
+> Cosine đo **góc**, **bỏ qua độ dài** — nghĩa nằm ở **hướng** (Bài 2: `[1,0]` vs `[5,0]` → 1.0). Euclid bị độ dài
+> ảnh hưởng.
+>
+> Nhưng vector OpenAI **đã chuẩn hoá về 1** (Bài 1 đo 0.9998–1.0002): cosine = **tích vô hướng** (nhanh hơn), Euclid
+> cho **cùng thứ hạng** vì \|a−b\|² = 2 − 2·cos. Docs FAQ: "We recommend cosine similarity… The choice of distance
+> function typically doesn't matter much"; cosine và Euclid "will result in the identical rankings".
+>
+> pgvector có cả cosine / inner product / L2 — vector đã chuẩn hoá thì dùng inner product cho nhanh (toán tử cụ thể:
+> kiểm ở Buổi 14).
+
+Câu nhớ: **Cosine = góc, bỏ độ dài; vector đã chuẩn hoá thì 3 cách xếp hạng như nhau.**
+
 ### 3. Chọn model embedding cho chatbot tiếng Việt thế nào?
+
+| Tiêu chí | Kiểm gì | Số đo Bài 3 |
+| --- | --- | --- |
+| Chất lượng tiếng Việt | Bộ test thật: câu hỏi thật, **không dấu**, câu hỏi ↔ đoạn, phủ định | e5 **trượt** "tro cap thoi viec ai tra?"; phủ định điểm rất cao ở cả 2 |
+| Không so điểm thô | So **thứ hạng**, không so cosine giữa 2 model | e5 dồn trong 0.78–0.97 |
+| Max input | Vừa kích thước chunk | OpenAI 8192 · e5 **512** (model card) |
+| Chạy ở đâu | API (dễ, dữ liệu ra ngoài) vs local (miễn phí, riêng tư, cần máy) | OpenAI qua mạng · e5 local |
+| Chi phí + số chiều | Giá, dung lượng DB | small $0.02/1M, 1536 · e5 miễn phí, 384 |
+
+> Không chọn theo bảng xếp hạng chung (MTEB) vì nó không nói model làm tốt **tiếng Việt, domain của mình** cỡ nào.
+>
+> 1. **Shortlist** 2–3 model: 1 API (OpenAI `-3-small`) + 1–2 đa ngữ local (multilingual-e5, bge-m3).
+> 2. **Đo trên data thật** (có gõ không dấu, câu hỏi ↔ đoạn, phủ định) → **recall@k**. So **thứ hạng**, không so điểm.
+> 3. **Cân đánh đổi**: max input, API vs local (dữ liệu nhạy cảm → local), latency, số chiều. Chi phí embed thường rất
+>    nhỏ (cả bộ luật ~$0.002).
+>
+> Ví dụ thật: e5-small trượt câu không dấu — user Việt gõ không dấu nhiều → điểm trừ lớn. **Chốt trước khi build**
+> vì đổi model = embed lại toàn bộ (số chiều khác nhau).
+
+Câu nhớ: **Shortlist → đo trên data thật (có không dấu) → cân đánh đổi → chốt trước khi build.**
