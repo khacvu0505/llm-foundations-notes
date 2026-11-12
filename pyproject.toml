@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "deepeval>=4.3.4",
     "fastapi[standard]>=0.143.0",
     "httpx2>=2.13.1",
     "openai>=3.19.2",
