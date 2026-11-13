@@ -5,6 +5,7 @@ import time
 import unicodedata
 
 import psycopg
+from chunking import segment_text
 from dotenv import load_dotenv
 from openai import OpenAI
 from pgvector import Vector
@@ -102,6 +103,93 @@ def retrieve(
     return cur.fetchall()
 
 
+SEGMENTED_COLUMNS = {"fts_seg"}  # Buổi 21 Bài 3: cột tsvector dựng từ chữ đã tách từ
+
+
+def keyword_search(
+  conn: psycopg.Connection,
+  question: str,
+  groups: list[str],
+  k: int = 20,
+  table: str = "law_chunks",
+  column: str = "fts_simple",
+) -> list[dict]:
+  """Buổi 21: tìm theo TỪ KHOÁ, điểm = Σ IDF các từ khớp (BM25 rút gọn) — luôn lọc quyền như retrieve().
+
+  Postgres ts_rank không có IDF ("do not use any global information") → tự tính IDF bằng ts_stat:
+  idf = ln(số chunk được xem / số chunk chứa từ) → từ có ở khắp nơi ("lao", "động") ≈ 0, từ hiếm được cộng nhiều.
+  """
+  if not groups:
+    return []  # fail closed, như retrieve()
+  name, col = sql.Identifier(table), sql.Identifier(column)
+  # ts_stat nhận 1 CÂU SQL dạng chuỗi → ghép an toàn bằng sql.Literal, và chỉ thống kê trên chunk user ĐƯỢC xem
+  stat_sql = (
+    sql.SQL("SELECT {} FROM {} WHERE allowed_groups && {}")
+    .format(col, name, sql.Literal(groups))
+    .as_string(conn)
+  )
+  query = sql.SQL(
+    """
+    WITH stat AS (SELECT word, ndoc FROM ts_stat(%(stat_sql)s)),
+         n AS (SELECT count(*)::float AS total FROM {name} WHERE allowed_groups && %(groups)s),
+         terms AS (SELECT DISTINCT unnest(tsvector_to_array(to_tsvector('simple', %(q)s))) AS word),
+         w AS (SELECT terms.word, ln(n.total / stat.ndoc) AS idf FROM terms JOIN stat USING (word), n)
+    SELECT c.doc_id, c.chunk_index, c.heading, c.content, sum(w.idf) AS sim
+    FROM {name} c
+    JOIN w ON c.{col} @@ plainto_tsquery('simple', w.word)
+    WHERE c.allowed_groups && %(groups)s  -- LỌC QUYỀN: luôn bật
+    GROUP BY c.doc_id, c.chunk_index, c.heading, c.content
+    ORDER BY sim DESC
+    LIMIT %(k)s
+    """
+  ).format(name=name, col=col)
+  q = unicodedata.normalize("NFC", question)
+  if (
+    column in SEGMENTED_COLUMNS
+  ):  # cột đã tách từ → câu hỏi cũng phải tách từ GIỐNG HỆT (như NFC, Buổi 15)
+    q = segment_text(q)
+  with conn.cursor(row_factory=dict_row) as cur:
+    cur.execute(query, {"stat_sql": stat_sql, "groups": groups, "q": q, "k": k})
+    return cur.fetchall()
+
+
+RRF_K = 60  # hằng số RRF hay dùng; làm "mềm" khác biệt giữa các hạng đầu
+
+
+def rrf(lists: list[list[dict]], k: int = 5, rrf_k: int = RRF_K) -> list[dict]:
+  """Buổi 21: Reciprocal Rank Fusion — trộn nhiều danh sách theo HẠNG, không theo điểm.
+
+  Mỗi chunk được Σ 1/(rrf_k + hạng) qua các danh sách → chunk đứng cao ở CẢ HAI danh sách thắng.
+  Không cộng thẳng điểm vì cosine (0–1) và điểm IDF (0–20+) khác thang đo (Buổi 13: không so điểm khác model).
+  """
+  scores: dict[tuple, float] = {}
+  chunks: dict[tuple, dict] = {}
+  for results in lists:
+    for rank, c in enumerate(results, start=1):
+      key = (c["doc_id"], c["chunk_index"])
+      scores[key] = scores.get(key, 0.0) + 1 / (rrf_k + rank)
+      chunks.setdefault(key, c)
+  top = sorted(scores, key=lambda key: scores[key], reverse=True)[:k]
+  return [
+    {**chunks[key], "sim": scores[key]} for key in top
+  ]  # "sim" = điểm RRF (không còn là cosine)
+
+
+def hybrid_retrieve(
+  conn: psycopg.Connection,
+  question: str,
+  groups: list[str],
+  k: int = 5,
+  table: str = "law_chunks",
+  column: str = "fts_simple",
+  pool: int = 20,
+) -> list[dict]:
+  """Buổi 21: top-`pool` theo vector + top-`pool` theo từ khoá → RRF → giữ k. Cả 2 nhánh đều lọc quyền."""
+  by_vector = retrieve(conn, question, groups, k=pool, table=table)
+  by_keyword = keyword_search(conn, question, groups, k=pool, table=table, column=column)
+  return rrf([by_vector, by_keyword], k=k)
+
+
 class Rewrites(BaseModel):
   queries: list[str]
 
@@ -167,12 +255,18 @@ def answer(
   table: str = "law_chunks",
   use_rewrite: bool = False,
   use_metadata: bool = False,
+  hybrid_column: str | None = None,
 ) -> dict:
   start = time.perf_counter()
+  if hybrid_column and use_rewrite:
+    raise ValueError("Buổi 21: đo hybrid riêng (chưa kết hợp với rewrite) — mỗi lần đổi 1 thứ")
   # Buổi 20: use_rewrite=True → viết lại câu hỏi (multi-query) rồi tìm + gộp; mặc định False = như dieu-300
   if use_rewrite:
     queries, rewrite_cost = rewrite(question)
     chunks = retrieve_multi(conn, queries, groups, table=table)
+  elif hybrid_column:  # Buổi 21: vector + từ khoá (cột tsvector) trộn bằng RRF
+    queries, rewrite_cost = [question], 0.0
+    chunks = hybrid_retrieve(conn, question, groups, table=table, column=hybrid_column)
   else:
     queries, rewrite_cost = [question], 0.0
     chunks = retrieve(conn, question, groups, table=table)

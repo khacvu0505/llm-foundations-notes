@@ -7,6 +7,28 @@ Cách chạy: `uv run python projects/p2-labor-law-rag/eval/run_eval.py` (bật/
 
 ---
 
+## 2026-11-13 — Hybrid search: vector + từ khoá (RRF) (Buổi 21)
+
+Cùng bảng `law_chunks_dieu300`, **không rewrite**, 37 câu. Từ khoá = Postgres full-text + **IDF tự tính** (`ts_stat` —
+`ts_rank` gốc không có IDF nên không phải BM25); trộn **RRF** (`Σ 1/(60 + hạng)`, top-20 mỗi nhánh → top-5); cả 2 nhánh
+lọc quyền. 2 cách tách: `simple` (theo âm tiết) và **tách từ** `underthesea` (nối liền vì `simple` coi `_` là dấu tách).
+
+| Đo (code) | vector | hybrid `simple` | **hybrid tách từ** |
+| --- | --- | --- | --- |
+| Từ chối nhầm | 4/27 | 3/27 | **3/27** |
+| Trả lời sai | 0 | 0 | 0 |
+| `fact_recall` · đủ 100% | 0.88 · 22 | 0.86 · 21 | **0.89 · 23** |
+| Từ chối đúng | 5/5 | 5/5 | 5/5 |
+| **Leak** | 0/5 | 0/5 | **0/5** |
+| s/câu | 2.89 | 2.46 | 3.18 |
+
+- Tách từ sửa **q05** không cần rewrite ("nghỉviệc" kéo Điều 35, 36 vào) + q23; nhưng làm hỏng **q02** (k=5 bị 2 mảnh Điều
+  137 chiếm, thiếu Khoản 1 Điều 139). `simple` sửa q23 nhưng làm 2 câu mất bớt dữ kiện (q09, q21).
+- Lợi ích **nhỏ** (1 câu) — eval ít câu mã số/thuật ngữ, nơi hybrid mạnh nhất. Kết quả thô `runs/dieu300-{vector,
+  hybrid-simple,hybrid-seg}.jsonl`.
+
+---
+
 ## 2026-11-13 — Metadata filtering (Buổi 20 Bài 5)
 
 Câu hỏi nêu "Điều N" → `heading LIKE 'Điều N.%'` (lọc độ liên quan, **cạnh** lọc quyền), chunk trong phạm vi đứng trước,
@@ -194,3 +216,5 @@ q16 là "generate" do khớp chuỗi "45 ngày" nhầm sang Điều 36.)_
 | dieu-800 (2026-11-13) | 3/25 | 5/5 | 1 (q13) | _chưa chấm_ | = 500, tốn token hơn |
 | **dieu-300 + rewrite** (2026-11-13) | **1/25** | 5/5 | **0** | _chưa chấm_ | `fact_recall` **0.96** · leak **0/5** · +66% $ · ×2 độ trễ |
 | + rewrite + metadata, lần 2 (2026-11-13) | 1/27 (q17) | 5/5 | 0 | _chưa chấm_ | `fact_recall` 0.96 · leak 0/5 · rewrite dao động: lần 1 hỏng q24, lần 2 hỏng q17 |
+| dieu-300 vector, 37 câu (2026-11-13) | 4/27 | 5/5 | 0 | _chưa chấm_ | mốc so hybrid · `fact_recall` 0.88 |
+| **dieu-300 hybrid tách từ** (2026-11-13) | **3/27** | 5/5 | 0 | _chưa chấm_ | `fact_recall` **0.89** · leak 0/5 · không rewrite |

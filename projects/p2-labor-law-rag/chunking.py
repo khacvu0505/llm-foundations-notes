@@ -116,6 +116,21 @@ def build_records(
   return records
 
 
+def segment_text(text: str) -> str:
+  """Buổi 21 Bài 3: tách từ tiếng Việt cho tìm từ khoá.
+
+  underthesea gộp âm tiết thành từ ("lao_động"), nhưng parser 'simple' của Postgres coi '_'
+  là DẤU TÁCH (ts_debug: lao | _ | động) → nối LIỀN ("laođộng") để giữ nguyên 1 từ.
+  Áp dụng cho cả chunk lẫn câu hỏi.
+  """
+  from underthesea import word_tokenize  # import chậm (tải model) → chỉ khi thật sự dùng
+
+  joined = word_tokenize(unicodedata.normalize("NFC", text), format="text")
+  if not isinstance(joined, str):  # format="text" trả str; kiểu khai báo của thư viện là str | list
+    joined = " ".join(joined)
+  return joined.replace("_", "")
+
+
 if __name__ == "__main__":
   chunks = [c for h, b in group_by_dieu(read_paragraphs(LAW_FILE)) for c in split_dieu(h, b)]
   lens = sorted(n_tokens(c) for c in chunks)

@@ -41,6 +41,7 @@ def run_bot(
   use_rewrite: bool = False,
   use_metadata: bool = False,
   only_ids: set[str] | None = None,
+  hybrid_column: str | None = None,
 ) -> None:
   items = [
     e
@@ -57,6 +58,7 @@ def run_bot(
         table=table,
         use_rewrite=use_rewrite,
         use_metadata=use_metadata,
+        hybrid_column=hybrid_column,
       )
       f.write(json.dumps({"id": item["id"], **r}, ensure_ascii=False) + "\n")
       f.flush()  # ghi ngay, lỡ lỗi giữa chừng vẫn giữ được
