@@ -7,6 +7,61 @@ Cách chạy: `uv run python projects/p2-labor-law-rag/eval/run_eval.py` (bật/
 
 ---
 
+## 2026-11-13 — Metadata filtering (Buổi 20 Bài 5)
+
+Câu hỏi nêu "Điều N" → `heading LIKE 'Điều N.%'` (lọc độ liên quan, **cạnh** lọc quyền), chunk trong phạm vi đứng trước,
+bù chỗ trống từ tìm kiếm thường (`fill`). Thêm 2 câu vào eval: **q36** (theo Điều 113…), **q37** ("Điều 26 quy định gì?").
+Eval set giờ **37 câu** (22 single / 5 multi / 5 not_found / 5 leak).
+
+| Câu | Hạng Điều nguồn: không lọc → có lọc (không rewrite / có rewrite) | Đúng/sai |
+| --- | --- | --- |
+| q36 | 1 → 1 / 1 → 1 | đúng cả 2 |
+| q37 | 2 → 1 / 3 → 1 | đúng cả 2 |
+
+- Lợi ích **nhỏ** trên bộ dữ liệu này: mọi chunk đã mở đầu bằng "Điều N. Tên điều" (Buổi 19) nên tìm thường vẫn ra. Bộ lọc
+  là lưới an toàn rẻ (đảm bảo hạng 1); 35 câu còn lại không bị ảnh hưởng (không bắt được phạm vi).
+- **Lần chạy thứ 2** của cấu hình rewrite (37 câu, `runs/dieu300-rewrite-meta.jsonl`): từ chối nhầm **1/27** (lần này là
+  **q17**, lần trước là **q24**) · `fact_recall` 0.96 · từ chối đúng 5/5 · **leak 0/5**. → rewrite làm kết quả **dao
+  động giữa các lần chạy**; so cấu hình có rewrite cần chạy nhiều lần.
+
+---
+
+## 2026-11-13 — Query rewriting, multi-query (`dieu300-rewrite`, Buổi 20)
+
+**Chỉ đổi 1 thứ so với dieu-300: thêm bước viết lại câu hỏi.** `rewrite()` (`gpt-6-luna`, structured output, câu gốc
+luôn giữ, cấm trả lời/thêm số liệu) → `retrieve_multi()` (tìm từng câu, **lọc quyền mọi câu**, xen kẽ theo hạng, k=5).
+Bot vẫn trả lời câu gốc, prompt không đổi. 35 câu (gồm 5 leak). Kết quả thô `runs/dieu300-rewrite.jsonl`.
+
+| Đo (code) | dieu-300 | **dieu-300 + rewrite** | Thay đổi |
+| --- | --- | --- | --- |
+| **Từ chối nhầm** | 4/25 | **1/25** (q24) | **−3** ✅ |
+| Trả lời sai | 0 | 0 | giữ ✅ |
+| Từ chối đúng | 5/5 | 5/5 | giữ ✅ |
+| **`fact_recall` TB** · đủ 100% | 0.87 · 20 | **0.96 · 23** | **+0.09** ✅ |
+| **Leak rate** | 0/5 | **0/5** | giữ ✅ |
+| Bot $ / 30 câu · s/câu | $0.0044 · 3.07 | **$0.0073 · 6.32** | **+66% chi phí, ×2 độ trễ** ⚠️ |
+
+- Sửa: q05 (từ ngữ luật), q20 (thêm dấu — nhưng trả lời thiếu 2/4 mức), q23, q25 (tách câu nhiều ý). q35 giờ trả lời theo
+  luật (150%) thay vì từ chối, không lộ.
+- **Tệ đi: q24** — 4 câu truy vấn lấp 5 chỗ bằng mảnh Điều 137/139 nhưng thiếu Khoản 1 Điều 139 → từ chối. Giới hạn k=5
+  là nút thắt → rerank (Phase 02 Buổi 10 = Session 22).
+
+---
+
+## 2026-11-13 — Leak test (Buổi 20 Bài 2)
+
+5 câu `type: "leak"` (q31–q35) trong `eval_set.jsonl`: user `public` hỏi nội dung chỉ có trong nội quy giả. Cấu hình
+**dieu-300** (chưa rewrite); lọc quyền `allowed_groups && groups` trong SQL. Kết quả thô `runs/dieu300-leak.jsonl`.
+
+| Đo | Kết quả |
+| --- | --- |
+| **Leak rate** | **0/5** ✅ — 0 chunk nội bộ ở bước tìm, 0 dấu rò rỉ trong câu trả lời |
+| Negative control (user `{public, internal}`) | Bài test **bắt được** cả 5 (1–4 chunk nội bộ + dấu rò rỉ mỗi câu) → test nhạy |
+
+Dấu rò rỉ được chọn sao cho: có trong nội quy giả, **không** có trong luật, **không** có trong câu hỏi.
+
+---
+
 ## 2026-11-13 — So cỡ chunk 300 / 500 / 800 (Buổi 19 Bài 5)
 
 Cùng chunker theo Điều/Khoản, chỉ đổi `max_tokens`. Bảng `law_chunks_dieu300`, `law_chunks_dieu`, `law_chunks_dieu800`.
@@ -137,3 +192,5 @@ q16 là "generate" do khớp chuỗi "45 ngày" nhầm sang Điều 36.)_
 | dieu-300 (2026-11-13) | 4/25 | 5/5 | **0** | _chưa chấm_ | `fact_recall` 0.87 · rẻ nhất |
 | **dieu-500** (2026-11-13) | **3/25** | 5/5 | 1 (q13) | _chưa chấm_ | chunk theo Điều/Khoản · `fact_recall` **0.85** |
 | dieu-800 (2026-11-13) | 3/25 | 5/5 | 1 (q13) | _chưa chấm_ | = 500, tốn token hơn |
+| **dieu-300 + rewrite** (2026-11-13) | **1/25** | 5/5 | **0** | _chưa chấm_ | `fact_recall` **0.96** · leak **0/5** · +66% $ · ×2 độ trễ |
+| + rewrite + metadata, lần 2 (2026-11-13) | 1/27 (q17) | 5/5 | 0 | _chưa chấm_ | `fact_recall` 0.96 · leak 0/5 · rewrite dao động: lần 1 hỏng q24, lần 2 hỏng q17 |
