@@ -33,12 +33,12 @@ def load_jsonl(path: Path) -> list[dict]:
   ]
 
 
-def run_bot(out: Path) -> None:
+def run_bot(out: Path, table: str = "law_chunks") -> None:
   items = load_jsonl(EVAL_SET)
   out.parent.mkdir(parents=True, exist_ok=True)
   with rag.get_conn() as conn, out.open("w", encoding="utf-8") as f:
     for i, item in enumerate(items, start=1):
-      r = rag.answer(conn, item["question"], item["group"])  # nhóm quyền của câu này
+      r = rag.answer(conn, item["question"], item["group"], table=table)  # nhóm quyền của câu này
       f.write(json.dumps({"id": item["id"], **r}, ensure_ascii=False) + "\n")
       f.flush()  # ghi ngay, lỡ lỗi giữa chừng vẫn giữ được
       print(f"{i}/{len(items)} {item['id']}  {r['seconds']}s  ${r['cost'] or 0:.5f}")
@@ -55,22 +55,38 @@ def source_hit(source: str, chunks: list[dict]) -> bool:
   )
 
 
+def fact_recall(chunks: list[dict], key_facts: list[str]) -> float | None:
+  """Buổi 19: tỷ lệ key_facts (chuỗi y nguyên trong luật) có trong top-k chunk — không cần LLM."""
+  if not key_facts:
+    return None
+  text = "\n".join(c["content"] for c in chunks)
+  return sum(f in text for f in key_facts) / len(key_facts)
+
+
 def grade_by_code(run_file: Path) -> None:
   """Bài 2: chấm không cần LLM — Điều nguồn có trong top-5 không, bot có từ chối không."""
   items = {e["id"]: e for e in load_jsonl(EVAL_SET)}
   answerable = hit_all = wrong_refusal = right_refusal = 0
+  recalls: list[float] = []
   for r in load_jsonl(run_file):
     e = items[r["id"]]
     refused = r["answer"].strip() == NOT_FOUND
     hits = [source_hit(s, r["chunks"]) for s in e["sources"]]
-    print(f"{e['id']}  {e['type']:9}  refused={refused!s:5}  sources={e['sources']}  hit={hits}")
+    fr = fact_recall(r["chunks"], e.get("key_facts", []))
+    fr_txt = "-" if fr is None else f"{fr:.2f}"
+    print(f"{e['id']}  {e['type']:9}  refused={refused!s:5}  fact_recall={fr_txt}  hit={hits}")
+    if fr is not None:
+      recalls.append(fr)
     if e["type"] == "not_found":
       right_refusal += refused
     else:
       answerable += 1
       hit_all += all(hits)
       wrong_refusal += refused
-  print(f"\nHit đủ Điều nguồn: {hit_all}/{answerable}")
+  avg = sum(recalls) / len(recalls) if recalls else 0.0
+  full = sum(x == 1.0 for x in recalls)
+  print(f"\nfact_recall TB: {avg:.2f} | đủ 100% dữ kiện: {full}/{len(recalls)}")
+  print(f"Hit đủ Điều nguồn (lạc quan): {hit_all}/{answerable}")
   print(f"Từ chối nhầm (câu có đáp án): {wrong_refusal}/{answerable}")
   print(f"Từ chối đúng (not_found): {right_refusal}/5")
 
@@ -110,9 +126,13 @@ def grade_deepeval(
 
 
 if __name__ == "__main__":
-  # run_bot(RUNS / "baseline.jsonl")  # Bài 1 — đã chạy, chạy lại sẽ tốn tiền + ra câu trả lời khác
-  # grade_by_code(RUNS / "baseline.jsonl")  # Bài 2 — miễn phí, chạy lại lúc nào cũng được
-  # Bài 3 — giám khảo gpt-5.4-mini: xong 25 câu → runs/baseline_scores.jsonl ($0.45, 🚩)
+  # Buổi 18 (baseline, bảng law_chunks) — đã chạy xong, giữ lại để tham khảo:
+  # run_bot(RUNS / "baseline.jsonl")
+  # grade_by_code(RUNS / "baseline.jsonl")
   # grade_deepeval(RUNS / "baseline.jsonl", RUNS / "baseline_scores.jsonl")
-  # Bài 3b — chấm lại CÙNG bộ câu trả lời bằng giám khảo mạnh hơn, lưu file riêng để so sánh:
-  grade_deepeval(RUNS / "baseline.jsonl", RUNS / "baseline_scores_gpt-5.4.jsonl", judge="gpt-5.4")
+  # grade_deepeval(RUNS / "baseline.jsonl", RUNS / "baseline_scores_gpt-5.4.jsonl", judge="gpt-5.4")
+
+  # Buổi 19 Bài 4 — chunk theo Điều/Khoản, max 500 token (bảng law_chunks_dieu):
+  RUN = RUNS / "dieu-500.jsonl"
+  run_bot(RUN, table="law_chunks_dieu")  # gọi bot 30 câu (~$0.007) — chạy 1 lần rồi comment lại
+  grade_by_code(RUN)  # miễn phí

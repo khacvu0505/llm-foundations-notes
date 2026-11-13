@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from pgvector import Vector
 from pgvector.psycopg import register_vector
+from psycopg import sql
 from psycopg.rows import dict_row
 
 load_dotenv()
@@ -62,26 +63,29 @@ def embed(text: str) -> Vector:
   return Vector(resp.data[0].embedding)
 
 
-def retrieve(conn: psycopg.Connection, question: str, group: str, k: int = 5) -> list[dict]:
+def retrieve(
+  conn: psycopg.Connection, question: str, group: str, k: int = 5, table: str = "law_chunks"
+) -> list[dict]:
   q = embed(unicodedata.normalize("NFC", question))  # chuẩn hoá đầu hỏi (Buổi 15)
-  with conn.cursor(row_factory=dict_row) as cur:  # mỗi dòng ra dict {tên cột: giá trị}
-    cur.execute(
-      """
+  # Buổi 19: tên bảng là tham số (mỗi kiểu chunk 1 bảng) — sql.Identifier để chèn tên an toàn
+  query = sql.SQL(
+    """
       SELECT doc_id, chunk_index, heading, content,
              1 - (embedding <=> %(q)s) AS sim
-      FROM law_chunks
+      FROM {}
       WHERE %(group)s = ANY(allowed_groups)
       ORDER BY embedding <=> %(q)s
       LIMIT %(k)s
-      """,
-      {"q": q, "group": group, "k": k},
-    )
+      """
+  ).format(sql.Identifier(table))
+  with conn.cursor(row_factory=dict_row) as cur:  # mỗi dòng ra dict {tên cột: giá trị}
+    cur.execute(query, {"q": q, "group": group, "k": k})
     return cur.fetchall()
 
 
-def answer(conn: psycopg.Connection, question: str, group: str) -> dict:
+def answer(conn: psycopg.Connection, question: str, group: str, table: str = "law_chunks") -> dict:
   start = time.perf_counter()
-  chunks = retrieve(conn, question, group)
+  chunks = retrieve(conn, question, group, table=table)
   resp = client.responses.create(
     model=MODEL,
     instructions=INSTRUCTIONS,  # luật (Bài 2)

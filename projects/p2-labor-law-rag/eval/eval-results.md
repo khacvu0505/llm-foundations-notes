@@ -7,6 +7,54 @@ Cách chạy: `uv run python projects/p2-labor-law-rag/eval/run_eval.py` (bật/
 
 ---
 
+## 2026-11-13 — So cỡ chunk 300 / 500 / 800 (Buổi 19 Bài 5)
+
+Cùng chunker theo Điều/Khoản, chỉ đổi `max_tokens`. Bảng `law_chunks_dieu300`, `law_chunks_dieu`, `law_chunks_dieu800`.
+Kết quả thô `runs/dieu-300.jsonl`, `runs/dieu-500.jsonl`, `runs/dieu-800.jsonl`.
+
+| Đo (code) | 300 | 500 | 800 |
+| --- | --- | --- | --- |
+| Chunk luật · median token · vượt max | 430 · 224 · 54 | 307 · 306 · 9 | 246 · 347 · 3 |
+| Từ chối nhầm | 4/25 | **3/25** | 3/25 |
+| Trả lời sai | **0** (q13 đúng) | 1 (q13) | 1 (q13) |
+| Từ chối đúng | 5/5 | 5/5 | 5/5 |
+| `fact_recall` · đủ 100% | **0.87** · 20 | 0.85 · 21 | 0.85 · 21 |
+| Bot $ · s/câu · token vào | **$0.0044** · 3.07 · 1,018 | $0.0055 · 3.13 · 1,346 | $0.0062 · 3.30 · 1,556 |
+
+- 300 sửa q13 (định nghĩa trong Điều 3 dài → chunk nhỏ thì "sắc", lên hạng 1) nhưng làm hỏng q23 (câu nhiều Điều).
+- 800 không hơn 500 ở chỉ số nào, chỉ tốn token hơn.
+- Khác biệt chỉ 1 câu mỗi chiều → coi như **hoà** giữa 300 và 500; chọn theo mức nghiêm trọng của lỗi + chi phí.
+- Overlap 0/50/100: **không đo** — chunk theo cấu trúc không cắt giữa Khoản và đã lặp tiêu đề Điều ở mỗi mảnh.
+- **Chọn 300** làm cấu hình hiện tại (0 câu sai, rẻ nhất); bảng `law_chunks_dieu300`. Các buổi sau so với **dieu-300**.
+
+---
+
+## 2026-11-13 — Chunk theo Điều/Khoản, max 500 token (`dieu-500`, Buổi 19)
+
+**Chỉ đổi 1 thứ so với baseline: cách chunk.** Bot, prompt, k=5, model, 30 câu giữ nguyên.
+
+| Mục | Giá trị |
+| --- | --- |
+| Chunking | `projects/p2-labor-law-rag/chunking.py` — 1 Điều = 1 chunk; Điều > 500 token chia theo **Khoản** (gộp Khoản liền nhau tới gần 500); **tiêu đề Điều ở đầu mọi chunk**; bỏ số chú thích ("1.4" → "1."), bỏ dòng Chương/Mục |
+| Bảng | `law_chunks_dieu` — luật 307 chunk (token 51 / median 306 / max 1,202; 9 chunk > 500 vì 1 Khoản quá dài) + nội quy 14 chunk |
+| Kết quả thô | `runs/dieu-500.jsonl` |
+
+| Đo (code) | Baseline | **dieu-500** | Thay đổi |
+| --- | --- | --- | --- |
+| **Từ chối nhầm** | 9/25 | **3/25** | **−6** ✅ |
+| Từ chối đúng | 5/5 | **5/5** | giữ nguyên ✅ |
+| **`fact_recall` TB** | 0.69 | **0.85** | **+0.16** ✅ |
+| Đủ 100% dữ kiện | 15/25 | **21/25** | +6 |
+| Trả lời sai (đã biết) | q13 | q13 | chưa sửa |
+| Bot: chi phí / thời gian / token vào TB | $0.0068 · 3.55 s · 1,803 | **$0.0055 · 3.13 s · 1,346** | rẻ + nhanh hơn |
+
+- Tốt lên: q03, q09, q16, q17, q22, q23. **Tệ đi: 0.**
+- Còn lại 4 lỗi **không do chunking**: q05 ("nghỉ việc" ≈ "nghỉ" → Buổi 8), q13 (Điều 3 không lọt top-5 → Buổi 9),
+  q20 (không dấu → Buổi 8), q25 (nhiều Điều → Buổi 8/10).
+- DeepEval (faithfulness/relevancy, `gpt-5.4-mini`): _chưa chấm lần này._
+
+---
+
 ## 2026-11-12 — Baseline (naive RAG, Buổi 16)
 
 ### Cấu hình
@@ -85,4 +133,7 @@ q16 là "generate" do khớp chuỗi "45 ngày" nhầm sang Điều 36.)_
 
 | Lần chạy | Từ chối nhầm | Từ chối đúng | Trả lời sai | Relevancy (gpt-5.4) | Ghi chú |
 | --- | --- | --- | --- | --- | --- |
-| Baseline (2026-11-12) | 9/25 | 5/5 | ≥ 1 | 0.62 | naive RAG |
+| Baseline (2026-11-12) | 9/25 | 5/5 | ≥ 1 | 0.62 | naive RAG · `fact_recall` 0.69 |
+| dieu-300 (2026-11-13) | 4/25 | 5/5 | **0** | _chưa chấm_ | `fact_recall` 0.87 · rẻ nhất |
+| **dieu-500** (2026-11-13) | **3/25** | 5/5 | 1 (q13) | _chưa chấm_ | chunk theo Điều/Khoản · `fact_recall` **0.85** |
+| dieu-800 (2026-11-13) | 3/25 | 5/5 | 1 (q13) | _chưa chấm_ | = 500, tốn token hơn |
