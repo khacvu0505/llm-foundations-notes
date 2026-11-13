@@ -218,3 +218,5 @@ q16 là "generate" do khớp chuỗi "45 ngày" nhầm sang Điều 36.)_
 | + rewrite + metadata, lần 2 (2026-11-13) | 1/27 (q17) | 5/5 | 0 | _chưa chấm_ | `fact_recall` 0.96 · leak 0/5 · rewrite dao động: lần 1 hỏng q24, lần 2 hỏng q17 |
 | dieu-300 vector, 37 câu (2026-11-13) | 4/27 | 5/5 | 0 | _chưa chấm_ | mốc so hybrid · `fact_recall` 0.88 |
 | **dieu-300 hybrid tách từ** (2026-11-13) | **3/27** | 5/5 | 0 | _chưa chấm_ | `fact_recall` **0.89** · leak 0/5 · không rewrite |
+| hybrid tách từ + rerank `bge` (2026-11-13) | 2/27 (q20, q25) | 5/5 | 0 | _chưa chấm_ | `fact_recall` 0.95 · leak 0/5 · rerank 3.03 s/câu · tổng 5.93 s (+86%) |
+| **hybrid tách từ + rerank `mmarco`** (2026-11-13) ✅ chọn | **1/27** (q20) ⚠️ | 5/5 | 0 | _chưa chấm_ | `fact_recall` **0.95** · leak 0/5 · rerank 0.56 s/câu · tổng 3.58 s (+13%) · q25 bị cắt ở 600 token ra → thực tế ngang `bge` |

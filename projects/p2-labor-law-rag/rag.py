@@ -190,6 +190,34 @@ def hybrid_retrieve(
   return rrf([by_vector, by_keyword], k=k)
 
 
+RERANKERS = {  # Buổi 22: 2 cross-encoder local (Hugging Face, apache-2.0)
+  "bge": "BAAI/bge-reranker-v2-m3",  # lớn, 567.8M tham số
+  "mmarco": "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1",  # nhỏ, 117.6M tham số
+}
+_loaded_rerankers: dict = {}  # tên → model đã nạp (nạp 1 lần, dùng lại cho mọi câu hỏi)
+
+
+def get_reranker(name: str):
+  """Nạp model lần đầu được gọi (lần đầu còn tải từ HF về ~/.cache/huggingface), các lần sau lấy lại từ dict."""
+  if name not in _loaded_rerankers:
+    from sentence_transformers import CrossEncoder  # import chậm (torch) → chỉ khi thật sự rerank
+
+    _loaded_rerankers[name] = CrossEncoder(RERANKERS[name])
+  return _loaded_rerankers[name]
+
+
+def rerank(question: str, chunks: list[dict], top_n: int = 5, model: str = "mmarco") -> list[dict]:
+  """Buổi 22: cross-encoder đọc (câu hỏi, đoạn) CÙNG LÚC → 1 điểm liên quan/cặp → sắp lại → giữ top_n.
+
+  Chỉ SẮP LẠI các chunk đã qua lọc quyền — không thêm chunk mới → không thể làm lộ tài liệu.
+  """
+  if not chunks:
+    return []
+  scores = get_reranker(model).predict([(question, c["content"]) for c in chunks])
+  ranked = sorted(zip(chunks, scores), key=lambda pair: pair[1], reverse=True)[:top_n]
+  return [{**c, "rerank": float(s)} for c, s in ranked]  # giữ "sim" cũ (RRF), thêm điểm rerank
+
+
 class Rewrites(BaseModel):
   queries: list[str]
 
@@ -256,17 +284,28 @@ def answer(
   use_rewrite: bool = False,
   use_metadata: bool = False,
   hybrid_column: str | None = None,
+  rerank_model: str | None = None,
+  rerank_pool: int = 20,
 ) -> dict:
   start = time.perf_counter()
   if hybrid_column and use_rewrite:
     raise ValueError("Buổi 21: đo hybrid riêng (chưa kết hợp với rewrite) — mỗi lần đổi 1 thứ")
+  if rerank_model and not hybrid_column:
+    raise ValueError("Buổi 22: rerank chỉ đo trên hybrid (mốc so sánh) — mỗi lần đổi 1 thứ")
+  rerank_seconds = 0.0
   # Buổi 20: use_rewrite=True → viết lại câu hỏi (multi-query) rồi tìm + gộp; mặc định False = như dieu-300
   if use_rewrite:
     queries, rewrite_cost = rewrite(question)
     chunks = retrieve_multi(conn, queries, groups, table=table)
   elif hybrid_column:  # Buổi 21: vector + từ khoá (cột tsvector) trộn bằng RRF
     queries, rewrite_cost = [question], 0.0
-    chunks = hybrid_retrieve(conn, question, groups, table=table, column=hybrid_column)
+    if rerank_model:  # Buổi 22: lấy RỘNG (top-20) → cross-encoder sắp lại → giữ 5 cho LLM
+      pool = hybrid_retrieve(conn, question, groups, k=rerank_pool, table=table, column=hybrid_column)
+      t = time.perf_counter()
+      chunks = rerank(question, pool, top_n=5, model=rerank_model)
+      rerank_seconds = time.perf_counter() - t  # chỉ phần chấm điểm (model đã nạp sẵn ngoài vòng lặp)
+    else:
+      chunks = hybrid_retrieve(conn, question, groups, table=table, column=hybrid_column)
   else:
     queries, rewrite_cost = [question], 0.0
     chunks = retrieve(conn, question, groups, table=table)
@@ -297,6 +336,7 @@ def answer(
         "chunk_index": c["chunk_index"],
         "heading": c["heading"],
         "sim": round(c["sim"], 4),
+        "rerank": round(c["rerank"], 4) if "rerank" in c else None,  # Buổi 22: điểm cross-encoder
         "content": c["content"],
       }
       for c in chunks
@@ -308,6 +348,8 @@ def answer(
     "rewrite_cost": rewrite_cost,  # phần chi phí của bước viết lại (đã cộng vào "cost")
     "queries": queries,
     "scope": scope,  # phạm vi Điều bắt được từ câu hỏi (rỗng = không lọc metadata)  # các câu truy vấn đã dùng để tìm (chỉ câu gốc nếu không rewrite)
+    "rerank_model": rerank_model,
+    "rerank_seconds": round(rerank_seconds, 3),  # Buổi 22 Bài 3: tách riêng độ trễ của rerank
     "seconds": round(time.perf_counter() - start, 2),
   }
 

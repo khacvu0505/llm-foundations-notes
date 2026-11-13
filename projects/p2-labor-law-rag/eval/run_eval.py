@@ -1,6 +1,7 @@
 import json
 import re
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent  # thư mục eval/
@@ -42,7 +43,12 @@ def run_bot(
   use_metadata: bool = False,
   only_ids: set[str] | None = None,
   hybrid_column: str | None = None,
+  rerank_model: str | None = None,
 ) -> None:
+  if rerank_model:  # Buổi 22: nạp model TRƯỚC vòng lặp → thời gian câu 1 không bị cộng thời gian nạp
+    t = time.perf_counter()
+    rag.get_reranker(rerank_model)
+    print(f"Nạp reranker {rerank_model}: {time.perf_counter() - t:.1f}s (1 lần)")
   items = [
     e
     for e in load_jsonl(EVAL_SET)
@@ -59,6 +65,7 @@ def run_bot(
         use_rewrite=use_rewrite,
         use_metadata=use_metadata,
         hybrid_column=hybrid_column,
+        rerank_model=rerank_model,
       )
       f.write(json.dumps({"id": item["id"], **r}, ensure_ascii=False) + "\n")
       f.flush()  # ghi ngay, lỡ lỗi giữa chừng vẫn giữ được
