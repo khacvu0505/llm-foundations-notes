@@ -7,6 +7,15 @@ Cách chạy: `uv run python projects/p2-labor-law-rag/eval/run_eval.py` (bật/
 
 ---
 
+## 2026-11-16 — Tổng hợp + trang phân tích (Buổi 24 / Phase 02 Buổi 12)
+
+Bản rút gọn: **không chạy lại**, không chấm giám khảo LLM — dùng số các mục dưới. Bảng trước/sau đầy đủ + "vì sao nhảy
+số" + cái đáng / không như kỳ vọng: **`../ANALYSIS.md`**. Tóm tắt: naive 9/25 từ chối nhầm → **chunking 4/25** (bước
+lớn nhất, rẻ hơn 35%) → hybrid 3/27 → **rerank 1/27** (+13% độ trễ) → cấu hình cuối 1/27 (thật 2/27, q25 rỗng); từ
+chối đúng 5/5 và leak 0/5 suốt chuỗi. Mục riêng cho Buổi 22–23: xem dòng cuối bảng trước/sau + `weeks/week03/session2{2,3}/notes.md`.
+
+---
+
 ## 2026-11-13 — Hybrid search: vector + từ khoá (RRF) (Buổi 21)
 
 Cùng bảng `law_chunks_dieu300`, **không rewrite**, 37 câu. Từ khoá = Postgres full-text + **IDF tự tính** (`ts_stat` —
