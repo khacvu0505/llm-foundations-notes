@@ -220,3 +220,13 @@ q16 là "generate" do khớp chuỗi "45 ngày" nhầm sang Điều 36.)_
 | **dieu-300 hybrid tách từ** (2026-11-13) | **3/27** | 5/5 | 0 | _chưa chấm_ | `fact_recall` **0.89** · leak 0/5 · không rewrite |
 | hybrid tách từ + rerank `bge` (2026-11-13) | 2/27 (q20, q25) | 5/5 | 0 | _chưa chấm_ | `fact_recall` 0.95 · leak 0/5 · rerank 3.03 s/câu · tổng 5.93 s (+86%) |
 | **hybrid tách từ + rerank `mmarco`** (2026-11-13) ✅ chọn | **1/27** (q20) ⚠️ | 5/5 | 0 | _chưa chấm_ | `fact_recall` **0.95** · leak 0/5 · rerank 0.56 s/câu · tổng 3.58 s (+13%) · q25 bị cắt ở 600 token ra → thực tế ngang `bge` |
+| + citation Khoản (2026-11-16) | 1/27 (q20) ⚠️ | 5/5 | 0 | _chưa chấm_ | chỉ đổi prompt quy tắc 2 · trích đúng Khoản **49/49** · q25 **rỗng** (chạm 600 token) · q11 thiếu `[n]` · 3.98 s |
+| + guard rerank top-1 < −1.5 (2026-11-16) | 2/27 (q20 chặn, q25 LLM từ chối) | 5/5 | 0 | _chưa chấm_ | **10/37 chặn trước LLM**, 0 chặn nhầm · câu bị chặn 0.47 s · TB 3.22 s · −21% $ |
+| **+ delimiter — cấu hình cuối Buổi 23** (2026-11-16, 39 câu) ✅ | 1/27 (q20) ⚠️ | 5/5 | 0 | _chưa chấm_ | `fact_recall` 0.95 · leak 0/5 · **injection 0/2** · trích đúng chỗ 59/59 (Khoản 55/55) · số liệu bám nguồn 74/76 (2 báo nhầm) · 3.38 s · $0.0062 · q25 **rỗng** (chạm 600 token, 3/4 lần chạy Buổi 23 hỏng) |
+
+Ghi chú Buổi 23 (chi tiết: `weeks/week03/session23/notes.md`):
+
+- "Từ chối nhầm" của `grade_by_code` **không** tính câu **rỗng** → q25 rỗng bị đếm là "có trả lời". Tính đúng thì cấu
+  hình cuối hỏng **2/27** (q20, q25). Cần sửa: tăng `max_output_tokens` hoặc đo token suy luận (Buổi sau).
+- Injection: ablation 3 lớp (không phòng thủ / quy tắc 4 / + delimiter) × 3 lần = **0/6 cả 3** → 2 tấn công quá yếu
+  với `gpt-6-luna`, **chưa đo được** tác dụng từng lớp. Giữ delimiter vì không tốn thêm, không hại câu trả lời.
