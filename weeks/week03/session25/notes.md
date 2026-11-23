@@ -2,15 +2,28 @@
 
 Đề bài: `exercises.md` cùng thư mục.
 
-- [ ] Setup · [ ] Bài 1 kế hoạch (user duyệt) · [ ] Bài 2 `answer_stream()` · [ ] Bài 3 API SSE · [ ] 3 câu phỏng vấn
+- [x] Setup · [x] Bài 1 kế hoạch (bản 2 ✅) · ~~Bài 2 `answer_stream()`~~ · ~~Bài 3 API SSE~~ (thay bằng việc Buổi 25 của
+  kế hoạch bản 2) · [x] 25.0 khung project `p2-chatbot` · [ ] 25.1 `chunking.py` · [ ] 25.2 `ingest.py` + bảng mới ·
+  [ ] 25.3 `retrieve.py` vector · [ ] 3 câu phỏng vấn
 
-## Handoff — dừng ở đây (cập nhật 2026-11-16)
+## Handoff — dừng ở đây (cập nhật 2026-11-23)
 
 _(Claude ghi để mở session mới — có thể ở **máy khác**. Đọc mục này trước.)_
 
-**Khung buổi 25 vừa tạo** (2026-11-16). Chưa làm bài nào.
+**Đã đổi hướng**: Project #2 **viết mới toàn bộ** trong `projects/p2-chatbot/` (kế hoạch bản 2 `plans/p2-chatbot.md`,
+user duyệt 2026-11-16) — 4 buổi 25–28. Bài 2–3 cũ (sửa `rag.py`) **bỏ**.
 
-**Việc tiếp theo**: Setup (5 quyết định kiến trúc) → Bài 1 kế hoạch → **dừng chờ user duyệt** → Bài 2.
+**Đã xong**: khung project `projects/p2-chatbot/` (uv app riêng, Python 3.12, 6 thư viện; Claude bỏ layout `src/` +
+`build-system` theo yêu cầu user — cấu trúc app phẳng như P1 backend). **Chưa commit**: `plans/`, `projects/p2-chatbot/`,
+notes này.
+
+**Đang làm**: `rag/chunking.py` — file **đang trống** (0 byte). Claude giải thích từng hàm, user tự viết. Đã giải thích
+hàm 1/4 `read_paragraphs` (đọc .docx → NFC → bỏ dòng rỗng; mong đợi **1377** dòng = 1415 − 38 rỗng). Tiếp: hàm 2
+`group_by_dieu` → 3 `split_dieu` (≤ 300 token theo Khoản) → 4 `build_records` (+ `content_hash`). Mốc tự kiểm: bản cũ
+**430 chunk luật, median 224 token**.
+
+**Chạy**: `cd projects/p2-chatbot && uv run python -m rag.chunking` (cảnh báo `VIRTUAL_ENV` vô hại — `deactivate` .venv
+gốc). Cần DB/OpenAI thì thêm `--env-file ../../.env`.
 
 **Project #2 = 3 buổi** (repo session 25–27 = Notion Buổi 13–15). Buổi 17 deploy → thiết kế phải tính tới deploy.
 
@@ -35,17 +48,27 @@ _(Claude kiểm, 2026-11-16.)_
 
 | Mục | Quyết định + lý do |
 | --- | --- |
-| Code app đặt ở đâu | |
-| Backend | |
-| Sự kiện SSE | |
-| Nhóm người dùng (`allowed_groups`) | |
-| Hướng deploy (Buổi 17) | |
+| Code app đặt ở đâu | **Trong `projects/p2-labor-law-rag/`**: thêm `api/` (FastAPI) + `web/` (Next.js), `rag.py` là thư viện lõi → eval và app chạy **cùng 1 code** |
+| Backend | **FastAPI + SSE như P1** — chép `sse.py`, `auth.py`, `rate_limit.py`, `cost_log.py`; giữ được reranker `mmarco` + `underthesea` (thư viện Python) |
+| Sự kiện SSE | **`sources` → `delta` → `done` / `error`**: `sources` (top-5: `[n]`, Điều, doc_id) gửi **trước** LLM → UI hiện nguồn ngay; `done` có token, $, `guarded`, `cited`. Câu bị guard chặn: `sources` + `done`, không có chữ LLM |
+| Nhóm người dùng (`allowed_groups`) | **Server quyết qua API key**: mỗi nhóm 1 key phía server, Next.js proxy chọn key; trình duyệt **không** gửi `groups` → không ai tự chọn `internal` được |
+| Hướng deploy (Buổi 17) | **Chưa chọn nhà cung cấp** (chưa kiểm RAM / giá). Hôm nay chỉ: mọi cấu hình đọc từ **biến môi trường**, reranker **tắt được** bằng cấu hình (Claude đặt mặc định an toàn, không hỏi user) |
 
 ## Bài 1 — Kế hoạch
 
-- File kế hoạch:
-- User duyệt: ⏸ chưa
-- Câu hỏi mở:
+- File kế hoạch: `plans/p2-chatbot.md` (Claude viết bản nháp 2026-11-16, sau khi đọc P1 `sse.py`, `auth.py`,
+  `main.py`, `web/app/api/chat/route.ts` + `rag.py`)
+- User duyệt: ✅ 2026-11-16 — đồng ý kế hoạch + 3 đề xuất (user ghi DB khi test, chỉ admin upload/xoá, Stop đồng bộ:
+  chấp nhận + đo, async ở Buổi 26 nếu cần)
+- Đổi cách làm (user chọn): `api/` + `web/` **user tự viết mới**, P1 chỉ để xem khi bí; `rag.py` giữ làm lõi. Lý do user
+  hỏi: tưởng Project #2 là viết mới toàn bộ — Notion Buổi 13–15 ghi "**ghép** thành app… **tái dùng pattern** Project
+  #1"; viết mới hoàn toàn là Buổi 18 (Rebuild test).
+- **Đổi lần 2 (user chọn): thư mục mới `projects/p2-chatbot/`, viết mới toàn bộ kể cả lõi RAG.** → Kế hoạch **bản 2**
+  (`plans/p2-chatbot.md`): 4 buổi (25–28), bảng mới trong DB, dùng lại file luật + `eval_set.jsonl` để đo lại. ✅ **User
+  duyệt bản 2** ("viết lại từ đầu đi" — Claude hiểu là nhận cả 3 điểm: trùng Buổi 18, lõi mới phải đo lại, thêm 1 buổi).
+  Bài 2–3 cũ của buổi này (`answer_stream`, API trên `rag.py`) **thay** bằng việc Buổi 25 trong kế hoạch bản 2.
+- Câu hỏi mở (mục 4 kế hoạch): ai bấm ghi DB khi test upload/xoá · chỉ nhóm admin được upload/xoá · Stop có thể không
+  dừng ngay (rag.py đồng bộ) · khởi động chậm (nạp model) · giới hạn cỡ file · eval từ admin chỉ bộ nhỏ · deploy chưa chọn
 
 ## Bài 2 — `answer_stream()`
 
